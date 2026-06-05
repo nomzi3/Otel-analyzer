@@ -1,15 +1,19 @@
 import { formatTimestamp, serviceBadge, truncate, showSpinner, showError, showEmpty } from '../utils.js';
 
-export async function renderAll(container) {
+export async function renderAll(container, params = {}) {
+  const services = params.services || [];
+  const sortByAttr = params.sortByAttr || '';
   showSpinner(container);
 
   let logs = [], metrics = [], traces = [];
 
+  const svcQS = services.length > 0 ? `&services=${encodeURIComponent(services.join(','))}` : '';
+
   try {
     const [logsRes, metricsRes, tracesRes] = await Promise.allSettled([
-      fetch('/api/v1/logs?limit=30&offset=0'),
-      fetch('/api/v1/metrics?limit=30&offset=0'),
-      fetch('/api/v1/traces?limit=30&offset=0'),
+      fetch(`/api/v1/logs?limit=30&offset=0${svcQS}`),
+      fetch(`/api/v1/metrics?limit=30&offset=0${svcQS}`),
+      fetch(`/api/v1/traces?limit=30&offset=0${svcQS}`),
     ]);
 
     if (logsRes.status === 'fulfilled' && logsRes.value.ok) {
@@ -38,6 +42,7 @@ export async function renderAll(container) {
       ts: l.timestamp || l.time_unix_nano || l.observed_time_unix_nano || '',
       service: l.service_name || l.service || '',
       summary: l.pattern || l.log_pattern || l.body || l.log_body || '',
+      resourceAttrs: l.resource_attributes || {},
     });
   });
 
@@ -48,6 +53,7 @@ export async function renderAll(container) {
       ts: m.timestamp || m.time_unix_nano || '',
       service: m.service_name || m.service || '',
       summary: `${m.metric_name || m.name || ''} = ${val}`,
+      resourceAttrs: m.resource_attributes || {},
     });
   });
 
@@ -58,15 +64,24 @@ export async function renderAll(container) {
       ts: t.start_time || t.start_time_unix_nano || t.timestamp || '',
       service: t.service_name || t.service || t.root_service || '',
       summary: `${t.root_span_name || t.root_name || t.name || ''} (${dur}ms)`,
+      resourceAttrs: t.resource_attributes || {},
     });
   });
 
-  // Sort by timestamp descending
-  rows.sort((a, b) => {
-    const ta = normalizeTs(a.ts);
-    const tb = normalizeTs(b.ts);
-    return tb - ta;
-  });
+  // Sort by resource attribute if requested, otherwise by timestamp desc
+  if (sortByAttr) {
+    rows.sort((a, b) => {
+      const va = String(a.resourceAttrs?.[sortByAttr] ?? '');
+      const vb = String(b.resourceAttrs?.[sortByAttr] ?? '');
+      return va.localeCompare(vb);
+    });
+  } else {
+    rows.sort((a, b) => {
+      const ta = normalizeTs(a.ts);
+      const tb = normalizeTs(b.ts);
+      return tb - ta;
+    });
+  }
 
   if (rows.length === 0) {
     showEmpty(container, 'No telemetry data found.');

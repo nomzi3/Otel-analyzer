@@ -3,6 +3,8 @@ import { formatTimestamp, serviceBadge, truncate, showSpinner, showError, showEm
 export async function renderMetrics(container, params = {}) {
   const offset = params.offset || 0;
   const metric_name = params.metric_name || '';
+  const services = params.services || [];
+  const sortByAttr = params.sortByAttr || '';
   const limit = 100;
 
   showSpinner(container);
@@ -11,6 +13,7 @@ export async function renderMetrics(container, params = {}) {
   try {
     const qs = new URLSearchParams({ limit, offset });
     if (metric_name) qs.set('metric_name', metric_name);
+    if (services.length > 0) qs.set('services', services.join(','));
     const res = await fetch(`/api/v1/metrics?${qs}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     data = await res.json();
@@ -19,7 +22,15 @@ export async function renderMetrics(container, params = {}) {
     return;
   }
 
-  const metrics = Array.isArray(data) ? data : (data.metrics || data.items || data.data || []);
+  let metrics = Array.isArray(data) ? data : (data.metrics || data.items || data.data || []);
+
+  if (sortByAttr) {
+    metrics = [...metrics].sort((a, b) => {
+      const va = String((a.resource_attributes || {})[sortByAttr] ?? '');
+      const vb = String((b.resource_attributes || {})[sortByAttr] ?? '');
+      return va.localeCompare(vb);
+    });
+  }
 
   if (metrics.length === 0) {
     showEmpty(container, 'No metrics found.');
@@ -105,14 +116,14 @@ export async function renderMetrics(container, params = {}) {
   prevBtn.textContent = '← Prev';
   prevBtn.disabled = offset === 0;
   prevBtn.addEventListener('click', () => {
-    renderMetrics(container, { ...params, offset: Math.max(0, offset - limit) });
+    renderMetrics(container, { ...params, services, sortByAttr, offset: Math.max(0, offset - limit) });
   });
 
   const nextBtn = document.createElement('button');
   nextBtn.textContent = 'Next →';
   nextBtn.disabled = metrics.length < limit;
   nextBtn.addEventListener('click', () => {
-    renderMetrics(container, { ...params, offset: offset + limit });
+    renderMetrics(container, { ...params, services, sortByAttr, offset: offset + limit });
   });
 
   const info = document.createElement('span');

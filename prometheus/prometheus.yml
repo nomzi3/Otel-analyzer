@@ -8,11 +8,8 @@ scrape_configs:
       - targets: ['backend-gateway:9090']
 
   - job_name: ingester
-    dns_sd_configs:
-      - names: ['backend-ingester']
-        type: A
-        port: 9093
-        refresh_interval: 15s
+    static_configs:
+      - targets: ['backend-ingester:9093']
 
   - job_name: api
     static_configs:

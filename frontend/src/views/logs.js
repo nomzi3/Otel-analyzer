@@ -2,7 +2,8 @@ import { formatTimestamp, severityBadge, serviceBadge, truncate, showSpinner, sh
 
 export async function renderLogs(container, params = {}) {
   const offset = params.offset || 0;
-  const service = params.service || '';
+  const services = params.services || [];
+  const sortByAttr = params.sortByAttr || '';
   const limit = 100;
 
   showSpinner(container);
@@ -10,7 +11,7 @@ export async function renderLogs(container, params = {}) {
   let data;
   try {
     const qs = new URLSearchParams({ limit, offset });
-    if (service) qs.set('service', service);
+    if (services.length > 0) qs.set('services', services.join(','));
     const res = await fetch(`/api/v1/logs?${qs}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     data = await res.json();
@@ -19,7 +20,15 @@ export async function renderLogs(container, params = {}) {
     return;
   }
 
-  const logs = Array.isArray(data) ? data : (data.logs || data.items || data.data || []);
+  let logs = Array.isArray(data) ? data : (data.logs || data.items || data.data || []);
+
+  if (sortByAttr) {
+    logs = [...logs].sort((a, b) => {
+      const va = String((a.resource_attributes || {})[sortByAttr] ?? '');
+      const vb = String((b.resource_attributes || {})[sortByAttr] ?? '');
+      return va.localeCompare(vb);
+    });
+  }
 
   if (logs.length === 0) {
     showEmpty(container, 'No logs found.');
@@ -113,14 +122,14 @@ export async function renderLogs(container, params = {}) {
   prevBtn.textContent = '← Prev';
   prevBtn.disabled = offset === 0;
   prevBtn.addEventListener('click', () => {
-    renderLogs(container, { ...params, offset: Math.max(0, offset - limit) });
+    renderLogs(container, { ...params, services, sortByAttr, offset: Math.max(0, offset - limit) });
   });
 
   const nextBtn = document.createElement('button');
   nextBtn.textContent = 'Next →';
   nextBtn.disabled = logs.length < limit;
   nextBtn.addEventListener('click', () => {
-    renderLogs(container, { ...params, offset: offset + limit });
+    renderLogs(container, { ...params, services, sortByAttr, offset: offset + limit });
   });
 
   const info = document.createElement('span');

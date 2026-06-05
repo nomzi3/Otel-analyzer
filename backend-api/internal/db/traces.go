@@ -84,7 +84,7 @@ func InsertSpans(ctx context.Context, conn driver.Conn, rows []SpanRow) error {
 }
 
 // QueryTraces returns trace root rows ordered by start_time DESC with optional service filter.
-func QueryTraces(ctx context.Context, conn driver.Conn, limit, offset int, serviceFilter string) ([]TraceRootRow, error) {
+func QueryTraces(ctx context.Context, conn driver.Conn, limit, offset int, services []string) ([]TraceRootRow, error) {
 	query := `SELECT
 		trace_id, root_span_id, service_name, root_name,
 		start_time, end_time, duration_ms, status_code,
@@ -92,9 +92,9 @@ func QueryTraces(ctx context.Context, conn driver.Conn, limit, offset int, servi
 	FROM otel_trace_roots`
 
 	args := []interface{}{}
-	if serviceFilter != "" {
-		query += ` WHERE service_name = ?`
-		args = append(args, serviceFilter)
+	if len(services) > 0 {
+		query += ` WHERE service_name IN (?)`
+		args = append(args, services)
 	}
 	query += ` ORDER BY start_time DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
@@ -157,4 +157,58 @@ func TruncateTraces(ctx context.Context, conn driver.Conn) error {
 		return err
 	}
 	return conn.Exec(ctx, `TRUNCATE TABLE otel_spans`)
+}
+
+// QueryServices returns distinct service names across all three signal tables.
+func QueryServices(ctx context.Context, conn driver.Conn) ([]string, error) {
+	query := `SELECT DISTINCT service_name FROM (
+		SELECT service_name FROM otel_logs WHERE service_name != ''
+		UNION ALL
+		SELECT service_name FROM otel_metrics WHERE service_name != ''
+		UNION ALL
+		SELECT service_name FROM otel_trace_roots WHERE service_name != ''
+	) ORDER BY service_name ASC`
+
+	rows, err := conn.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query services: %w", err)
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scan row: %w", err)
+		}
+		result = append(result, name)
+	}
+	return result, rows.Err()
+}
+
+// QueryResourceAttributeKeys returns distinct resource_attributes keys across all signal tables.
+func QueryResourceAttributeKeys(ctx context.Context, conn driver.Conn) ([]string, error) {
+	query := `SELECT DISTINCT key FROM (
+		SELECT arrayJoin(mapKeys(resource_attributes)) AS key FROM otel_logs WHERE length(resource_attributes) > 0
+		UNION ALL
+		SELECT arrayJoin(mapKeys(resource_attributes)) AS key FROM otel_metrics WHERE length(resource_attributes) > 0
+		UNION ALL
+		SELECT arrayJoin(mapKeys(resource_attributes)) AS key FROM otel_trace_roots WHERE length(resource_attributes) > 0
+	) ORDER BY key ASC`
+
+	rows, err := conn.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query resource attribute keys: %w", err)
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, fmt.Errorf("scan row: %w", err)
+		}
+		result = append(result, key)
+	}
+	return result, rows.Err()
 }

@@ -5,7 +5,7 @@ SIGNALS ?= all
 INTERVAL ?= 10s
 SERVICE ?=
 
-.PHONY: up down reset scale-ingester test-telemetry logs status help
+.PHONY: up down build reset scale-ingester test-telemetry logs status help
 
 help:
 	@printf "%-20s %s\n" "up"              "Start all services in the background"
@@ -14,7 +14,11 @@ help:
 	@printf "%-20s %s\n" "scale-ingester"  "Scale the ingester (N=<count>, default 1)"
 	@printf "%-20s %s\n" "test-telemetry"  "Run benchmark generator (DURATION, SIGNALS, INTERVAL)"
 	@printf "%-20s %s\n" "logs"            "Follow logs (SERVICE=<name> or all)"
+	@printf "%-20s %s\n" "build"           "Force rebuild all images (no cache)"
 	@printf "%-20s %s\n" "status"          "Show container status"
+
+build:
+	docker compose build --no-cache --pull
 
 up:
 	docker compose up -d

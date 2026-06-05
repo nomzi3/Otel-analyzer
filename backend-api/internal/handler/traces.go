@@ -41,9 +41,9 @@ func GetTraces(conn driver.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		limit := clampLimit(r.URL.Query().Get("limit"), 100)
 		offset := parseInt(r.URL.Query().Get("offset"), 0)
-		service := r.URL.Query().Get("service")
+		services := parseServices(r.URL.Query().Get("services"))
 
-		rows, err := db.QueryTraces(r.Context(), conn, limit, offset, service)
+		rows, err := db.QueryTraces(r.Context(), conn, limit, offset, services)
 		if err != nil {
 			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 			return

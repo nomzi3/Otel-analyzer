@@ -28,8 +28,9 @@ func GetMetrics(conn driver.Conn) http.HandlerFunc {
 		limit := clampLimit(r.URL.Query().Get("limit"), 100)
 		offset := parseInt(r.URL.Query().Get("offset"), 0)
 		metricName := r.URL.Query().Get("metric_name")
+		services := parseServices(r.URL.Query().Get("services"))
 
-		rows, err := db.QueryMetrics(r.Context(), conn, limit, offset, metricName)
+		rows, err := db.QueryMetrics(r.Context(), conn, limit, offset, metricName, services)
 		if err != nil {
 			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 			return

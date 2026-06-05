@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"go.opentelemetry.io/otel/log/global"
 
 	"github.com/otel-analyzer/benchmark-generator/internal"
 )
@@ -64,7 +63,6 @@ func run(endpoint, durationStr, signalsStr, intervalStr string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), totalDuration)
 	defer cancel()
 
-	// Handle OS signals
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -72,26 +70,35 @@ func run(endpoint, durationStr, signalsStr, intervalStr string) error {
 		cancel()
 	}()
 
-	// Set up exporters
-	tracerProvider, meterProvider, loggerProvider, shutdown, err := internal.SetupExporters(ctx, endpoint)
+	// Create shared OTLP exporters (one connection per signal type).
+	exporters, err := internal.NewExporters(ctx, endpoint)
 	if err != nil {
 		return fmt.Errorf("setup exporters: %w", err)
 	}
 
-	// Register global logger provider
-	global.SetLoggerProvider(loggerProvider)
+	// Create per-service SDK providers so each service has its own resource
+	// (including service.name), preventing unknown_service in downstream systems.
+	svcProviders := make(map[string]*internal.ServiceProviders, len(internal.Services))
+	for _, svc := range internal.Services {
+		sp, err := internal.NewServiceProviders(ctx, exporters, svc, intervalDur)
+		if err != nil {
+			return fmt.Errorf("create providers for %s: %w", svc.Name, err)
+		}
+		svcProviders[svc.Name] = sp
+	}
 
 	defer func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer shutdownCancel()
-		if err := shutdown(shutdownCtx); err != nil {
-			log.Printf("shutdown error: %v", err)
+		for _, sp := range svcProviders {
+			if err := sp.Shutdown(shutdownCtx); err != nil {
+				log.Printf("shutdown error: %v", err)
+			}
+		}
+		if err := exporters.Shutdown(shutdownCtx); err != nil {
+			log.Printf("exporter shutdown error: %v", err)
 		}
 	}()
-
-	tracer := tracerProvider.Tracer("benchmark-generator")
-	meter := meterProvider.Meter("benchmark-generator")
-	logger := loggerProvider.Logger("benchmark-generator")
 
 	metricsSetup := make(map[string]bool)
 
@@ -108,6 +115,11 @@ func run(endpoint, durationStr, signalsStr, intervalStr string) error {
 			tickCount++
 			fmt.Printf("[tick %d] Generating telemetry for %d services...\n", tickCount, len(internal.Services))
 			for _, svc := range internal.Services {
+				sp := svcProviders[svc.Name]
+				tracer := sp.TracerProvider.Tracer("benchmark-generator")
+				meter := sp.MeterProvider.Meter("benchmark-generator")
+				logger := sp.LoggerProvider.Logger("benchmark-generator")
+
 				if wantTraces {
 					if err := internal.GenerateTraces(ctx, svc, tracer); err != nil {
 						log.Printf("traces error for %s: %v", svc.Name, err)
