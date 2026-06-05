@@ -83,8 +83,8 @@ func InsertSpans(ctx context.Context, conn driver.Conn, rows []SpanRow) error {
 	return batch.Send()
 }
 
-// QueryTraces returns trace root rows ordered by start_time DESC with optional service filter.
-func QueryTraces(ctx context.Context, conn driver.Conn, limit, offset int, services []string) ([]TraceRootRow, error) {
+// QueryTraces returns trace root rows ordered by start_time DESC with optional filters.
+func QueryTraces(ctx context.Context, conn driver.Conn, limit, offset int, services []string, method string) ([]TraceRootRow, error) {
 	query := `SELECT
 		trace_id, root_span_id, service_name, root_name,
 		start_time, end_time, duration_ms, status_code,
@@ -92,9 +92,17 @@ func QueryTraces(ctx context.Context, conn driver.Conn, limit, offset int, servi
 	FROM otel_trace_roots`
 
 	args := []interface{}{}
+	clauses := []string{}
 	if len(services) > 0 {
-		query += ` WHERE service_name IN (?)`
+		clauses = append(clauses, `service_name IN (?)`)
 		args = append(args, services)
+	}
+	if method != "" {
+		clauses = append(clauses, `span_attributes['http.url'] = ?`)
+		args = append(args, method)
+	}
+	if len(clauses) > 0 {
+		query += ` WHERE ` + joinTraceClauses(clauses)
 	}
 	query += ` ORDER BY start_time DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
@@ -149,6 +157,33 @@ func QuerySpans(ctx context.Context, conn driver.Conn, traceID string) ([]SpanRo
 		result = append(result, r)
 	}
 	return result, rows.Err()
+}
+
+// QueryTraceMethods returns distinct http.url values from root span attributes.
+func QueryTraceMethods(ctx context.Context, conn driver.Conn) ([]string, error) {
+	rows, err := conn.Query(ctx, `SELECT DISTINCT span_attributes['http.url'] AS url FROM otel_trace_roots WHERE url != '' ORDER BY url ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("query trace methods: %w", err)
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scan row: %w", err)
+		}
+		result = append(result, name)
+	}
+	return result, rows.Err()
+}
+
+func joinTraceClauses(clauses []string) string {
+	result := clauses[0]
+	for _, c := range clauses[1:] {
+		result += ` AND ` + c
+	}
+	return result
 }
 
 // TruncateTraces removes all rows from both otel_trace_roots and otel_spans.

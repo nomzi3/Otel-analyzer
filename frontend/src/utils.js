@@ -95,3 +95,69 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
+
+// Modal helpers
+let _modalOverlay = null;
+
+export function showModal(title, contentEl) {
+  closeModal();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+
+  const box = document.createElement('div');
+  box.className = 'modal-box';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'modal-close';
+  closeBtn.textContent = '✕';
+  closeBtn.addEventListener('click', closeModal);
+
+  const titleEl = document.createElement('h2');
+  titleEl.className = 'modal-title';
+  titleEl.textContent = title;
+
+  box.appendChild(closeBtn);
+  box.appendChild(titleEl);
+  box.appendChild(contentEl);
+  overlay.appendChild(box);
+
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) closeModal();
+  });
+
+  document.addEventListener('keydown', _escHandler);
+  document.body.appendChild(overlay);
+  _modalOverlay = overlay;
+}
+
+export function closeModal() {
+  if (_modalOverlay) {
+    _modalOverlay.remove();
+    _modalOverlay = null;
+  }
+  document.removeEventListener('keydown', _escHandler);
+}
+
+function _escHandler(e) {
+  if (e.key === 'Escape') closeModal();
+}
+
+// Build a key-value table element from an object
+export function kvTable(obj) {
+  const table = document.createElement('table');
+  table.className = 'kv-table';
+  const entries = Object.entries(obj || {});
+  if (entries.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'text-muted';
+    p.textContent = '(none)';
+    return p;
+  }
+  entries.forEach(([k, v]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="kv-key">${escapeHtml(k)}</td><td class="kv-val">${escapeHtml(String(v))}</td>`;
+    table.appendChild(tr);
+  });
+  return table;
+}

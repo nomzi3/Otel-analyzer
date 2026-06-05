@@ -42,8 +42,9 @@ func GetTraces(conn driver.Conn) http.HandlerFunc {
 		limit := clampLimit(r.URL.Query().Get("limit"), 100)
 		offset := parseInt(r.URL.Query().Get("offset"), 0)
 		services := parseServices(r.URL.Query().Get("services"))
+		method := r.URL.Query().Get("method")
 
-		rows, err := db.QueryTraces(r.Context(), conn, limit, offset, services)
+		rows, err := db.QueryTraces(r.Context(), conn, limit, offset, services, method)
 		if err != nil {
 			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -53,6 +54,21 @@ func GetTraces(conn driver.Conn) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(rows)
+	}
+}
+
+func GetTraceMethods(conn driver.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		methods, err := db.QueryTraceMethods(r.Context(), conn)
+		if err != nil {
+			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if methods == nil {
+			methods = []string{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(methods)
 	}
 }
 

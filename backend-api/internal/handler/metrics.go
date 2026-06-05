@@ -43,6 +43,21 @@ func GetMetrics(conn driver.Conn) http.HandlerFunc {
 	}
 }
 
+func GetMetricNames(conn driver.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		names, err := db.QueryMetricNames(r.Context(), conn)
+		if err != nil {
+			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if names == nil {
+			names = []string{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(names)
+	}
+}
+
 func DeleteMetrics(conn driver.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := db.TruncateMetrics(r.Context(), conn); err != nil {

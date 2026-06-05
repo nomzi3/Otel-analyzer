@@ -48,18 +48,23 @@ func main() {
 		r.Post("/", handler.PostLogs(conn))
 		r.Get("/", handler.GetLogs(conn))
 		r.Delete("/", handler.DeleteLogs(conn))
+		r.Get("/patterns", handler.GetLogPatterns(conn))
+		r.Get("/severities", handler.GetLogSeverities(conn))
+		r.Get("/log-services", handler.GetLogServices(conn))
 	})
 
 	r.Route("/v1/metrics", func(r chi.Router) {
 		r.Post("/", handler.PostMetrics(conn))
 		r.Get("/", handler.GetMetrics(conn))
 		r.Delete("/", handler.DeleteMetrics(conn))
+		r.Get("/names", handler.GetMetricNames(conn))
 	})
 
 	r.Route("/v1/traces", func(r chi.Router) {
 		r.Post("/", handler.PostTraces(conn))
 		r.Get("/", handler.GetTraces(conn))
 		r.Delete("/", handler.DeleteTraces(conn))
+		r.Get("/methods", handler.GetTraceMethods(conn))
 		r.Get("/{traceID}/spans", handler.GetTraceSpans(conn))
 	})
 

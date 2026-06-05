@@ -1,8 +1,8 @@
-import { formatTimestamp, serviceBadge, truncate, showSpinner, showError, showEmpty } from '../utils.js';
+import { formatTimestamp, serviceBadge, truncate, showSpinner, showError, showEmpty, showModal, kvTable } from '../utils.js';
 
 export async function renderMetrics(container, params = {}) {
   const offset = params.offset || 0;
-  const metric_name = params.metric_name || '';
+  const metricName = params.metricName || '';
   const services = params.services || [];
   const sortByAttr = params.sortByAttr || '';
   const limit = 100;
@@ -12,7 +12,7 @@ export async function renderMetrics(container, params = {}) {
   let data;
   try {
     const qs = new URLSearchParams({ limit, offset });
-    if (metric_name) qs.set('metric_name', metric_name);
+    if (metricName) qs.set('metric_name', metricName);
     if (services.length > 0) qs.set('services', services.join(','));
     const res = await fetch(`/api/v1/metrics?${qs}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -37,13 +37,35 @@ export async function renderMetrics(container, params = {}) {
     return;
   }
 
+  // Group by (metric_name, service_name, metric_attributes key, resource_attributes key)
+  const groupMap = new Map();
+  for (const m of metrics) {
+    const name = m.metric_name || m.name || '';
+    const svc = m.service_name || m.service || '';
+    const mAttrs = m.metric_attributes || m.attributes || m.labels || {};
+    const rAttrs = m.resource_attributes || {};
+    const key = `${name}\x00${svc}\x00${stableJson(mAttrs)}\x00${stableJson(rAttrs)}`;
+    if (!groupMap.has(key)) {
+      groupMap.set(key, {
+        name, svc,
+        type: m.metric_type || m.type || '',
+        mAttrs, rAttrs,
+        values: [],
+      });
+    }
+    const g = groupMap.get(key);
+    g.values.push({ ts: m.timestamp, value: formatMetricValue(m) });
+  }
+
+  const groups = [...groupMap.values()];
+
   const wrapper = document.createElement('div');
 
   const header = document.createElement('div');
   header.className = 'section-header';
   header.innerHTML = `
     <span class="section-title">Metrics</span>
-    <span class="section-count">${metrics.length} records (offset ${offset})</span>
+    <span class="section-count">${groups.length} groups / ${metrics.length} records (offset ${offset})</span>
   `;
   wrapper.appendChild(header);
 
@@ -52,57 +74,33 @@ export async function renderMetrics(container, params = {}) {
   table.innerHTML = `
     <thead>
       <tr>
-        <th>Timestamp</th>
-        <th>Service</th>
         <th>Metric Name</th>
+        <th>Service</th>
         <th>Type</th>
-        <th>Value</th>
         <th>Attributes</th>
+        <th>Points</th>
       </tr>
     </thead>
   `;
 
   const tbody = document.createElement('tbody');
 
-  metrics.forEach((m, idx) => {
+  groups.forEach(g => {
     const tr = document.createElement('tr');
-    tr.dataset.idx = idx;
+    tr.style.cursor = 'pointer';
 
-    const ts = m.timestamp || m.time_unix_nano || m.start_time_unix_nano || '';
-    const svc = m.service_name || m.service || '';
-    const name = m.metric_name || m.name || '';
-    const type = m.metric_type || m.type || '';
-    const value = formatMetricValue(m);
-    const attrs = m.attributes || m.labels || {};
-    const attrsStr = Object.entries(attrs).map(([k, v]) => `${k}=${v}`).join(', ');
+    const attrsStr = Object.entries(g.mAttrs).map(([k, v]) => `${k}=${v}`).join(', ');
 
     tr.innerHTML = `
-      <td>${formatTimestamp(ts)}</td>
-      <td>${serviceBadge(svc)}</td>
-      <td>${truncate(name, 60)}</td>
-      <td><span class="badge badge-metric">${truncate(type, 20)}</span></td>
-      <td>${value}</td>
+      <td>${truncate(g.name, 60)}</td>
+      <td>${serviceBadge(g.svc)}</td>
+      <td><span class="badge badge-metric">${truncate(g.type, 20)}</span></td>
       <td title="${escapeAttr(attrsStr)}">${truncate(attrsStr, 80)}</td>
+      <td><span class="badge badge-metric">${g.values.length}</span></td>
     `;
 
-    const expandTr = document.createElement('tr');
-    expandTr.className = 'expand-row';
-    expandTr.style.display = 'none';
-    const expandTd = document.createElement('td');
-    expandTd.colSpan = 6;
-
-    const pre = document.createElement('pre');
-    pre.textContent = JSON.stringify(m, null, 2);
-    expandTd.appendChild(pre);
-    expandTr.appendChild(expandTd);
-
-    tr.addEventListener('click', () => {
-      const hidden = expandTr.style.display === 'none';
-      expandTr.style.display = hidden ? 'table-row' : 'none';
-    });
-
+    tr.addEventListener('click', () => openMetricGroupModal(g));
     tbody.appendChild(tr);
-    tbody.appendChild(expandTr);
   });
 
   table.appendChild(tbody);
@@ -116,14 +114,14 @@ export async function renderMetrics(container, params = {}) {
   prevBtn.textContent = '← Prev';
   prevBtn.disabled = offset === 0;
   prevBtn.addEventListener('click', () => {
-    renderMetrics(container, { ...params, services, sortByAttr, offset: Math.max(0, offset - limit) });
+    renderMetrics(container, { ...params, services, sortByAttr, metricName, offset: Math.max(0, offset - limit) });
   });
 
   const nextBtn = document.createElement('button');
   nextBtn.textContent = 'Next →';
   nextBtn.disabled = metrics.length < limit;
   nextBtn.addEventListener('click', () => {
-    renderMetrics(container, { ...params, services, sortByAttr, offset: offset + limit });
+    renderMetrics(container, { ...params, services, sortByAttr, metricName, offset: offset + limit });
   });
 
   const info = document.createElement('span');
@@ -139,14 +137,76 @@ export async function renderMetrics(container, params = {}) {
   container.appendChild(wrapper);
 }
 
+function openMetricGroupModal(g) {
+  const content = document.createElement('div');
+
+  const svcMeta = document.createElement('p');
+  svcMeta.className = 'text-muted';
+  svcMeta.style.marginBottom = '1rem';
+  svcMeta.textContent = `Service: ${g.svc || '(unknown)'}  ·  Type: ${g.type || '—'}  ·  ${g.values.length} data point${g.values.length !== 1 ? 's' : ''}`;
+  content.appendChild(svcMeta);
+
+  // Resource attributes
+  const rSec = document.createElement('div');
+  rSec.className = 'modal-section';
+  const rTitle = document.createElement('div');
+  rTitle.className = 'modal-section-title';
+  rTitle.textContent = 'Resource Attributes';
+  rSec.appendChild(rTitle);
+  rSec.appendChild(kvTable(g.rAttrs));
+  content.appendChild(rSec);
+
+  // Metric attributes
+  const mSec = document.createElement('div');
+  mSec.className = 'modal-section';
+  const mTitle = document.createElement('div');
+  mTitle.className = 'modal-section-title';
+  mTitle.textContent = 'Metric Attributes';
+  mSec.appendChild(mTitle);
+  mSec.appendChild(kvTable(g.mAttrs));
+  content.appendChild(mSec);
+
+  // Values over time
+  const vSec = document.createElement('div');
+  vSec.className = 'modal-section';
+  const vTitle = document.createElement('div');
+  vTitle.className = 'modal-section-title';
+  vTitle.textContent = 'Values (newest first)';
+  vSec.appendChild(vTitle);
+
+  const vTable = document.createElement('table');
+  vTable.className = 'data-table';
+  vTable.innerHTML = `<thead><tr><th>Timestamp</th><th>Value</th></tr></thead>`;
+  const vtbody = document.createElement('tbody');
+  g.values.forEach(v => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${formatTimestamp(v.ts)}</td><td style="font-family:monospace">${escapeHtml(String(v.value))}</td>`;
+    vtbody.appendChild(row);
+  });
+  vTable.appendChild(vtbody);
+  vSec.appendChild(vTable);
+  content.appendChild(vSec);
+
+  showModal(truncate(g.name, 80), content);
+}
+
 function formatMetricValue(m) {
-  if (m.value !== undefined && m.value !== null) return String(m.value);
-  if (m.gauge !== undefined) return String(m.gauge);
-  if (m.sum !== undefined) return String(m.sum);
+  if (m.value !== undefined && m.value !== null) return m.value;
+  if (m.gauge !== undefined) return m.gauge;
+  if (m.sum !== undefined) return m.sum;
   if (m.count !== undefined) return `count=${m.count}`;
-  if (m.as_double !== undefined) return String(m.as_double);
-  if (m.as_int !== undefined) return String(m.as_int);
+  if (m.as_double !== undefined) return m.as_double;
+  if (m.as_int !== undefined) return m.as_int;
   return '—';
+}
+
+function stableJson(obj) {
+  const keys = Object.keys(obj || {}).sort();
+  return JSON.stringify(Object.fromEntries(keys.map(k => [k, obj[k]])));
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function escapeAttr(str) {
