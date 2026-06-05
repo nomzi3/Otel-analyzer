@@ -1,0 +1,60 @@
+{
+  "uid": "gateway",
+  "title": "Gateway",
+  "schemaVersion": 36,
+  "version": 1,
+  "time": {"from": "now-1h", "to": "now"},
+  "refresh": "15s",
+  "links": [
+    {
+      "title": "Ingester",
+      "type": "link",
+      "url": "/d/ingester",
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "title": "API",
+      "type": "link",
+      "url": "/d/api",
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Logs/sec by service",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "rate(gateway_logs_received_total[1m])", "legendFormat": "{{service_name}}"}
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Spans/sec by service",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "rate(gateway_spans_received_total[1m])", "legendFormat": "{{service_name}}"}
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Datapoints/sec by service",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "rate(gateway_datapoints_received_total[1m])", "legendFormat": "{{service_name}}"}
+      ]
+    }
+  ]
+}

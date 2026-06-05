@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OTel Analyzer</title>
+  <link rel="stylesheet" href="styles/dark.css" />
+</head>
+<body>
+  <nav>
+    <span class="brand">OTel Analyzer</span>
+    <a href="#all"     class="tab" data-view="all">All</a>
+    <a href="#logs"    class="tab" data-view="logs">Logs</a>
+    <a href="#metrics" class="tab" data-view="metrics">Metrics</a>
+    <a href="#traces"  class="tab" data-view="traces">Traces</a>
+  </nav>
+
+  <div id="status-bar">
+    <span class="dot"></span>
+    <span id="last-refresh">Never refreshed</span>
+  </div>
+
+  <div id="view"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

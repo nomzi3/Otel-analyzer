@@ -1,0 +1,183 @@
+networks:
+  otel-net:
+    driver: bridge
+
+volumes:
+  redpanda-data:
+  clickhouse-data:
+  prometheus-data:
+  grafana-data:
+
+services:
+  redpanda:
+    image: redpandadata/redpanda:v24.3.1
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr redpanda:33145
+      - --advertise-rpc-addr redpanda:33145
+      - --mode dev-container
+      - --smp 1
+      - --default-log-level=warn
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "info", "--brokers", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - otel-net
+
+  redpanda-init:
+    image: redpandadata/redpanda:v24.3.1
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        rpk topic create otel-logs --brokers redpanda:9092 --partitions 4 --replicas 1 \
+          -c retention.ms=900000 -c retention.bytes=1073741824 || true
+        rpk topic create otel-metrics --brokers redpanda:9092 --partitions 4 --replicas 1 \
+          -c retention.ms=900000 -c retention.bytes=1073741824 || true
+        rpk topic create otel-traces --brokers redpanda:9092 --partitions 4 --replicas 1 \
+          -c retention.ms=900000 -c retention.bytes=1073741824 || true
+    restart: "no"
+    networks:
+      - otel-net
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ./backend-database/clickhouse-config.xml:/etc/clickhouse-server/config.d/custom.xml
+      - ./backend-database/init:/docker-entrypoint-initdb.d
+      - clickhouse-data:/var/lib/clickhouse
+    environment:
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - otel-net
+
+  backend-gateway:
+    build: ./backend-gateway
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "9090:9090"
+    environment:
+      REDPANDA_BROKERS: redpanda:9092
+      KAFKA_TOPIC_LOGS: ${KAFKA_TOPIC_LOGS}
+      KAFKA_TOPIC_METRICS: ${KAFKA_TOPIC_METRICS}
+      KAFKA_TOPIC_TRACES: ${KAFKA_TOPIC_TRACES}
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - otel-net
+
+  backend-ingester:
+    build: ./backend-ingester
+    environment:
+      REDPANDA_BROKERS: redpanda:9092
+      API_BASE_URL: http://backend-api:8080
+      KAFKA_TOPIC_LOGS: ${KAFKA_TOPIC_LOGS}
+      KAFKA_TOPIC_METRICS: ${KAFKA_TOPIC_METRICS}
+      KAFKA_TOPIC_TRACES: ${KAFKA_TOPIC_TRACES}
+      INGESTER_REPLICAS: ${INGESTER_REPLICAS}
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+      backend-api:
+        condition: service_started
+    networks:
+      - otel-net
+
+  backend-api:
+    build: ./backend-api
+    ports:
+      - "8080:8080"
+      - "9091:9091"
+    environment:
+      CLICKHOUSE_DSN: clickhouse://clickhouse:9000/default
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - otel-net
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "1337:1337"
+    environment:
+      API_BASE_URL: http://backend-api:8080
+    depends_on:
+      backend-api:
+        condition: service_started
+    networks:
+      - otel-net
+
+  benchmark-generator:
+    build: ./benchmark-generator
+    networks:
+      - otel-net
+    profiles:
+      - tools
+
+  prometheus:
+    image: prom/prometheus:v3.3.1
+    ports:
+      - "19090:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=1h
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    networks:
+      - otel-net
+
+  grafana:
+    image: grafana/grafana:13.0.2
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana-data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    depends_on:
+      prometheus:
+        condition: service_started
+    networks:
+      - otel-net

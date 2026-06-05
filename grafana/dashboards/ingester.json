@@ -1,0 +1,60 @@
+{
+  "uid": "ingester",
+  "title": "Ingester",
+  "schemaVersion": 36,
+  "version": 1,
+  "time": {"from": "now-1h", "to": "now"},
+  "refresh": "15s",
+  "links": [
+    {
+      "title": "Gateway",
+      "type": "link",
+      "url": "/d/gateway",
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    },
+    {
+      "title": "API",
+      "type": "link",
+      "url": "/d/api",
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Logs/min",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "rate(ingester_logs_processed_total[1m]) * 60", "legendFormat": "logs/min"}
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Root traces/min",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "rate(ingester_root_traces_processed_total[1m]) * 60", "legendFormat": "traces/min"}
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Datapoints/min",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "rate(ingester_datapoints_processed_total[1m]) * 60", "legendFormat": "datapoints/min"}
+      ]
+    }
+  ]
+}
