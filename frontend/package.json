@@ -1,0 +1,7 @@
+{
+  "name": "otel-analyzer-frontend",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cp -r src dist"
+  }
+}
