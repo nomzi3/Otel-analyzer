@@ -48,7 +48,7 @@ func InsertLogs(ctx context.Context, conn driver.Conn, rows []LogRow) error {
 }
 
 // QueryLogs returns log rows ordered by timestamp DESC with optional service filter.
-func QueryLogs(ctx context.Context, conn driver.Conn, limit, offset int, serviceFilter string) ([]LogRow, error) {
+func QueryLogs(ctx context.Context, conn driver.Conn, limit, offset int, services []string) ([]LogRow, error) {
 	query := `SELECT
 		timestamp, observed_timestamp, trace_id, span_id,
 		severity_number, severity_text, body, log_pattern,
@@ -56,9 +56,9 @@ func QueryLogs(ctx context.Context, conn driver.Conn, limit, offset int, service
 	FROM otel_logs`
 
 	args := []interface{}{}
-	if serviceFilter != "" {
-		query += ` WHERE service_name = ?`
-		args = append(args, serviceFilter)
+	if len(services) > 0 {
+		query += ` WHERE service_name IN (?)`
+		args = append(args, services)
 	}
 	query += ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)

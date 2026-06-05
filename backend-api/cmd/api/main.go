@@ -41,6 +41,8 @@ func main() {
 	r.Use(middleware.REDMetrics)
 
 	r.Get("/health", handler.Health)
+	r.Get("/v1/services", handler.GetServices(conn))
+	r.Get("/v1/resource-attributes", handler.GetResourceAttributeKeys(conn))
 
 	r.Route("/v1/logs", func(r chi.Router) {
 		r.Post("/", handler.PostLogs(conn))

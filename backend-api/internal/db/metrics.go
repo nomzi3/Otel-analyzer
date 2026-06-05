@@ -40,17 +40,25 @@ func InsertMetrics(ctx context.Context, conn driver.Conn, rows []MetricRow) erro
 	return batch.Send()
 }
 
-// QueryMetrics returns metric rows ordered by timestamp DESC with optional metric_name filter.
-func QueryMetrics(ctx context.Context, conn driver.Conn, limit, offset int, metricName string) ([]MetricRow, error) {
+// QueryMetrics returns metric rows ordered by timestamp DESC with optional filters.
+func QueryMetrics(ctx context.Context, conn driver.Conn, limit, offset int, metricName string, services []string) ([]MetricRow, error) {
 	query := `SELECT
 		timestamp, metric_name, metric_type, value, service_name,
 		resource_attributes, metric_attributes
 	FROM otel_metrics`
 
 	args := []interface{}{}
+	clauses := []string{}
 	if metricName != "" {
-		query += ` WHERE metric_name = ?`
+		clauses = append(clauses, `metric_name = ?`)
 		args = append(args, metricName)
+	}
+	if len(services) > 0 {
+		clauses = append(clauses, `service_name IN (?)`)
+		args = append(args, services)
+	}
+	if len(clauses) > 0 {
+		query += ` WHERE ` + joinClauses(clauses)
 	}
 	query += ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
@@ -73,6 +81,14 @@ func QueryMetrics(ctx context.Context, conn driver.Conn, limit, offset int, metr
 		result = append(result, r)
 	}
 	return result, rows.Err()
+}
+
+func joinClauses(clauses []string) string {
+	result := clauses[0]
+	for _, c := range clauses[1:] {
+		result += ` AND ` + c
+	}
+	return result
 }
 
 // TruncateMetrics removes all rows from otel_metrics.

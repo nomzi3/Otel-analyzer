@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/otel-analyzer/backend-api/internal/db"
@@ -30,9 +31,9 @@ func GetLogs(conn driver.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		limit := clampLimit(r.URL.Query().Get("limit"), 100)
 		offset := parseInt(r.URL.Query().Get("offset"), 0)
-		service := r.URL.Query().Get("service")
+		services := parseServices(r.URL.Query().Get("services"))
 
-		rows, err := db.QueryLogs(r.Context(), conn, limit, offset, service)
+		rows, err := db.QueryLogs(r.Context(), conn, limit, offset, services)
 		if err != nil {
 			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -65,6 +66,21 @@ func clampLimit(s string, defaultVal int) int {
 		return 1000
 	}
 	return v
+}
+
+func parseServices(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 func parseInt(s string, defaultVal int) int {

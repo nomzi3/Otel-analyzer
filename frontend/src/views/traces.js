@@ -2,7 +2,8 @@ import { formatTimestamp, serviceBadge, truncate, showSpinner, showError, showEm
 
 export async function renderTraces(container, params = {}) {
   const offset = params.offset || 0;
-  const service = params.service || '';
+  const services = params.services || [];
+  const sortByAttr = params.sortByAttr || '';
   const limit = 50;
 
   showSpinner(container);
@@ -10,7 +11,7 @@ export async function renderTraces(container, params = {}) {
   let data;
   try {
     const qs = new URLSearchParams({ limit, offset });
-    if (service) qs.set('service', service);
+    if (services.length > 0) qs.set('services', services.join(','));
     const res = await fetch(`/api/v1/traces?${qs}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     data = await res.json();
@@ -19,7 +20,15 @@ export async function renderTraces(container, params = {}) {
     return;
   }
 
-  const traces = Array.isArray(data) ? data : (data.traces || data.items || data.data || []);
+  let traces = Array.isArray(data) ? data : (data.traces || data.items || data.data || []);
+
+  if (sortByAttr) {
+    traces = [...traces].sort((a, b) => {
+      const va = String((a.resource_attributes || {})[sortByAttr] ?? '');
+      const vb = String((b.resource_attributes || {})[sortByAttr] ?? '');
+      return va.localeCompare(vb);
+    });
+  }
 
   if (traces.length === 0) {
     showEmpty(container, 'No traces found.');
@@ -124,14 +133,14 @@ export async function renderTraces(container, params = {}) {
   prevBtn.textContent = '← Prev';
   prevBtn.disabled = offset === 0;
   prevBtn.addEventListener('click', () => {
-    renderTraces(container, { ...params, offset: Math.max(0, offset - limit) });
+    renderTraces(container, { ...params, services, sortByAttr, offset: Math.max(0, offset - limit) });
   });
 
   const nextBtn = document.createElement('button');
   nextBtn.textContent = 'Next →';
   nextBtn.disabled = traces.length < limit;
   nextBtn.addEventListener('click', () => {
-    renderTraces(container, { ...params, offset: offset + limit });
+    renderTraces(container, { ...params, services, sortByAttr, offset: offset + limit });
   });
 
   const info = document.createElement('span');

@@ -147,6 +147,10 @@ services:
 
   benchmark-generator:
     build: ./benchmark-generator
+    command: ["--endpoint", "http://backend-gateway:4318", "--duration", "1h", "--interval", "10s"]
+    depends_on:
+      backend-gateway:
+        condition: service_healthy
     networks:
       - otel-net
     profiles:
