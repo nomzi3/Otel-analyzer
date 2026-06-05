@@ -14,7 +14,7 @@ var (
 	reUUID   = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
 	reIPv4   = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
 	reHex    = regexp.MustCompile(`\b(?:0x[0-9a-fA-F]{6,}|[0-9a-fA-F]{8,})\b`)
-	reNum    = regexp.MustCompile(`\b\d+(?:\.\d+)?\b`)
+	reNum    = regexp.MustCompile(`\b\d+(?:\.\d+)?[a-zA-Z]*\b`)
 	reSpaces = regexp.MustCompile(`\s+`)
 )
 

@@ -1,9 +1,10 @@
-import { formatTimestamp, serviceBadge, truncate, showSpinner, showError, showEmpty } from '../utils.js';
+import { formatTimestamp, serviceBadge, truncate, showSpinner, showError, showEmpty, showModal, kvTable } from '../utils.js';
 
 export async function renderTraces(container, params = {}) {
   const offset = params.offset || 0;
   const services = params.services || [];
   const sortByAttr = params.sortByAttr || '';
+  const traceMethod = params.traceMethod || '';
   const limit = 50;
 
   showSpinner(container);
@@ -12,6 +13,7 @@ export async function renderTraces(container, params = {}) {
   try {
     const qs = new URLSearchParams({ limit, offset });
     if (services.length > 0) qs.set('services', services.join(','));
+    if (traceMethod) qs.set('method', traceMethod);
     const res = await fetch(`/api/v1/traces?${qs}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     data = await res.json();
@@ -52,7 +54,7 @@ export async function renderTraces(container, params = {}) {
       <tr>
         <th>Start Time</th>
         <th>Service</th>
-        <th>Root Span</th>
+        <th>Trace ID</th>
         <th>Duration (ms)</th>
         <th>Status</th>
       </tr>
@@ -61,65 +63,26 @@ export async function renderTraces(container, params = {}) {
 
   const tbody = document.createElement('tbody');
 
-  traces.forEach((trace, idx) => {
+  traces.forEach(trace => {
     const tr = document.createElement('tr');
-    tr.dataset.idx = idx;
+    tr.style.cursor = 'pointer';
 
     const ts = trace.start_time || trace.start_time_unix_nano || trace.timestamp || '';
     const svc = trace.service_name || trace.service || trace.root_service || '';
-    const rootName = trace.root_span_name || trace.root_name || trace.name || '';
+    const traceId = trace.trace_id || trace.traceId || trace.id || '';
     const durationMs = formatDuration(trace);
     const status = trace.status || trace.status_code || 'UNSET';
 
     tr.innerHTML = `
       <td>${formatTimestamp(ts)}</td>
       <td>${serviceBadge(svc)}</td>
-      <td title="${escapeAttr(rootName)}">${truncate(rootName, 60)}</td>
+      <td style="font-family:monospace;font-size:12px" title="${escapeAttr(traceId)}">${truncate(traceId, 20)}</td>
       <td>${durationMs}</td>
       <td>${statusBadge(status)}</td>
     `;
 
-    // Expandable waterfall row
-    const waterfallTr = document.createElement('tr');
-    waterfallTr.className = 'expand-row';
-    waterfallTr.style.display = 'none';
-    const waterfallTd = document.createElement('td');
-    waterfallTd.colSpan = 5;
-    waterfallTr.appendChild(waterfallTd);
-
-    let loaded = false;
-    tr.addEventListener('click', async () => {
-      const hidden = waterfallTr.style.display === 'none';
-      if (!hidden) {
-        waterfallTr.style.display = 'none';
-        return;
-      }
-      waterfallTr.style.display = 'table-row';
-      if (loaded) return;
-      loaded = true;
-
-      const traceId = trace.trace_id || trace.traceId || trace.id || '';
-      if (!traceId) {
-        waterfallTd.innerHTML = '<div class="span-waterfall"><span style="color:var(--text-muted)">No trace ID available.</span></div>';
-        return;
-      }
-
-      waterfallTd.innerHTML = '<div class="span-waterfall"><div class="spinner-wrap"><div class="spinner"></div> Loading spans…</div></div>';
-
-      try {
-        const res = await fetch(`/api/v1/traces/${encodeURIComponent(traceId)}/spans`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const spanData = await res.json();
-        const spans = Array.isArray(spanData) ? spanData : (spanData.spans || spanData.data || []);
-        waterfallTd.innerHTML = '';
-        waterfallTd.appendChild(renderWaterfall(spans));
-      } catch (err) {
-        waterfallTd.innerHTML = `<div class="span-waterfall"><span style="color:var(--error)">Failed to load spans: ${err.message}</span></div>`;
-      }
-    });
-
+    tr.addEventListener('click', () => openTraceModal(trace));
     tbody.appendChild(tr);
-    tbody.appendChild(waterfallTr);
   });
 
   table.appendChild(tbody);
@@ -133,14 +96,14 @@ export async function renderTraces(container, params = {}) {
   prevBtn.textContent = '← Prev';
   prevBtn.disabled = offset === 0;
   prevBtn.addEventListener('click', () => {
-    renderTraces(container, { ...params, services, sortByAttr, offset: Math.max(0, offset - limit) });
+    renderTraces(container, { ...params, services, sortByAttr, traceMethod, offset: Math.max(0, offset - limit) });
   });
 
   const nextBtn = document.createElement('button');
   nextBtn.textContent = 'Next →';
   nextBtn.disabled = traces.length < limit;
   nextBtn.addEventListener('click', () => {
-    renderTraces(container, { ...params, services, sortByAttr, offset: offset + limit });
+    renderTraces(container, { ...params, services, sortByAttr, traceMethod, offset: offset + limit });
   });
 
   const info = document.createElement('span');
@@ -156,7 +119,64 @@ export async function renderTraces(container, params = {}) {
   container.appendChild(wrapper);
 }
 
-function renderWaterfall(spans) {
+async function openTraceModal(trace) {
+  const traceId = trace.trace_id || trace.traceId || trace.id || '';
+
+  const content = document.createElement('div');
+
+  // Trace attributes section
+  const attrSec = document.createElement('div');
+  attrSec.className = 'modal-section';
+  const attrTitle = document.createElement('div');
+  attrTitle.className = 'modal-section-title';
+  attrTitle.textContent = 'Resource Attributes';
+  attrSec.appendChild(attrTitle);
+  attrSec.appendChild(kvTable(trace.resource_attributes || {}));
+  content.appendChild(attrSec);
+
+  const spanAttrSec = document.createElement('div');
+  spanAttrSec.className = 'modal-section';
+  const spanAttrTitle = document.createElement('div');
+  spanAttrTitle.className = 'modal-section-title';
+  spanAttrTitle.textContent = 'Root Span Attributes';
+  spanAttrSec.appendChild(spanAttrTitle);
+  spanAttrSec.appendChild(kvTable(trace.span_attributes || {}));
+  content.appendChild(spanAttrSec);
+
+  // Spans section — load async
+  const spansSec = document.createElement('div');
+  spansSec.className = 'modal-section';
+  const spansTitle = document.createElement('div');
+  spansTitle.className = 'modal-section-title';
+  spansTitle.textContent = 'Spans';
+  spansSec.appendChild(spansTitle);
+  const spansContainer = document.createElement('div');
+  spansContainer.textContent = 'Loading spans…';
+  spansSec.appendChild(spansContainer);
+  content.appendChild(spansSec);
+
+  showModal(traceId || 'Trace', content);
+
+  // Fetch spans after modal is shown
+  if (!traceId) {
+    spansContainer.textContent = 'No trace ID available.';
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/v1/traces/${encodeURIComponent(traceId)}/spans`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const spanData = await res.json();
+    const spans = Array.isArray(spanData) ? spanData : (spanData.spans || spanData.data || []);
+    spansContainer.innerHTML = '';
+    spansContainer.appendChild(renderSpanTree(spans));
+  } catch (err) {
+    spansContainer.textContent = `Failed to load spans: ${err.message}`;
+    spansContainer.style.color = 'var(--error)';
+  }
+}
+
+function renderSpanTree(spans) {
   const div = document.createElement('div');
   div.className = 'span-waterfall';
 
@@ -165,7 +185,6 @@ function renderWaterfall(spans) {
     return div;
   }
 
-  // Build parent-child map
   const byId = {};
   spans.forEach(s => {
     const id = s.span_id || s.spanId || s.id;
@@ -179,19 +198,36 @@ function renderWaterfall(spans) {
 
   function renderSpan(span, depth) {
     const item = document.createElement('div');
-    item.className = 'span-item';
+    item.className = 'span-item span-item-clickable';
     item.style.paddingLeft = `${depth * 20}px`;
 
     const name = span.name || span.span_name || '';
     const svc = span.service_name || span.service || '';
     const dur = formatDuration(span);
+    const statusCode = span.status_code ?? span.status ?? 'UNSET';
 
     item.innerHTML = `
       <span class="span-name">${escapeHtml(truncate(name, 60))}</span>
       <span class="span-duration">${dur}ms</span>
       ${svc ? `<span class="span-service">[${escapeHtml(svc)}]</span>` : ''}
+      ${statusBadge(statusCode)}
     `;
+
+    // Toggle span attributes panel on click
+    const attrsPanel = document.createElement('div');
+    attrsPanel.className = 'span-attrs-panel';
+    attrsPanel.style.display = 'none';
+
+    const allAttrs = Object.assign({}, span.span_attributes || {});
+    attrsPanel.appendChild(kvTable(allAttrs));
+
+    item.addEventListener('click', e => {
+      e.stopPropagation();
+      attrsPanel.style.display = attrsPanel.style.display === 'none' ? 'block' : 'none';
+    });
+
     div.appendChild(item);
+    div.appendChild(attrsPanel);
 
     const spanId = span.span_id || span.spanId || span.id;
     const children = spans.filter(s => (s.parent_span_id || s.parentSpanId) === spanId);
@@ -200,7 +236,6 @@ function renderWaterfall(spans) {
 
   roots.forEach(r => renderSpan(r, 0));
 
-  // Fallback: just list all spans if tree building fails
   if (roots.length === 0) {
     spans.forEach(s => {
       const item = document.createElement('div');
@@ -222,7 +257,6 @@ function formatDuration(obj) {
   const end   = obj.end_time_unix_nano   || obj.end_time;
   if (start && end) {
     const diff = Number(BigInt(end) - BigInt(start));
-    // nanoseconds → ms
     return (diff / 1e6).toFixed(2);
   }
   return '—';

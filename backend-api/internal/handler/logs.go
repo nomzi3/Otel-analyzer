@@ -32,8 +32,10 @@ func GetLogs(conn driver.Conn) http.HandlerFunc {
 		limit := clampLimit(r.URL.Query().Get("limit"), 100)
 		offset := parseInt(r.URL.Query().Get("offset"), 0)
 		services := parseServices(r.URL.Query().Get("services"))
+		logPattern := r.URL.Query().Get("log_pattern")
+		severity := r.URL.Query().Get("severity")
 
-		rows, err := db.QueryLogs(r.Context(), conn, limit, offset, services)
+		rows, err := db.QueryLogs(r.Context(), conn, limit, offset, services, logPattern, severity)
 		if err != nil {
 			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -43,6 +45,55 @@ func GetLogs(conn driver.Conn) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(rows)
+	}
+}
+
+func GetLogPatterns(conn driver.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		services := parseServices(r.URL.Query().Get("services"))
+		severity := r.URL.Query().Get("severity")
+		rows, err := db.QueryLogPatterns(r.Context(), conn, services, severity)
+		if err != nil {
+			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if rows == nil {
+			rows = []db.LogPatternRow{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(rows)
+	}
+}
+
+func GetLogSeverities(conn driver.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		services := parseServices(r.URL.Query().Get("services"))
+		severities, err := db.QueryLogSeverities(r.Context(), conn, services)
+		if err != nil {
+			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if severities == nil {
+			severities = []string{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(severities)
+	}
+}
+
+func GetLogServices(conn driver.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		severity := r.URL.Query().Get("severity")
+		services, err := db.QueryLogServices(r.Context(), conn, severity)
+		if err != nil {
+			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if services == nil {
+			services = []string{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(services)
 	}
 }
 

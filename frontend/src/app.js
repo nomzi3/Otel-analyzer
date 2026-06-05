@@ -14,6 +14,10 @@ const VIEW_MAP = {
 const filterState = {
   services:    [],   // [] = show all
   sortByAttr:  '',   // '' = no sort; otherwise a resource_attributes key
+  logSeverity: '',   // selected log severity filter ('' = all)
+  logPattern:  '',   // selected log pattern filter
+  metricName:  '',   // selected metric name filter
+  traceMethod: '',   // selected trace method filter
 };
 
 let currentView = 'all';
@@ -64,6 +68,141 @@ async function renderView(view, extraParams = {}) {
   }
 
   updateStatusBar();
+  await buildViewControls(view);
+}
+
+async function loadViewData(view) {
+  try {
+    if (view === 'logs') {
+      const res = await fetch('/api/v1/logs/patterns');
+      if (!res.ok) return [];
+      return await res.json();
+    }
+    if (view === 'metrics') {
+      const res = await fetch('/api/v1/metrics/names');
+      if (!res.ok) return [];
+      return await res.json();
+    }
+    if (view === 'traces') {
+      const res = await fetch('/api/v1/traces/methods');
+      if (!res.ok) return [];
+      return await res.json();
+    }
+  } catch { /* ignore */ }
+  return [];
+}
+
+async function buildViewControls(view) {
+  const bar = document.getElementById('filter-bar');
+  if (!bar) return;
+
+  // Remove any previously injected view-specific controls
+  bar.querySelectorAll('.view-control').forEach(el => el.remove());
+
+  if (view === 'logs') {
+    // Fetch severities and patterns in parallel
+    const [severities, patternData] = await Promise.all([
+      fetch('/api/v1/logs/severities').then(r => r.ok ? r.json() : []).catch(() => []),
+      fetch(`/api/v1/logs/patterns${filterState.logSeverity ? '?severity=' + encodeURIComponent(filterState.logSeverity) : ''}`).then(r => r.ok ? r.json() : []).catch(() => []),
+    ]);
+    const distinctPatterns = [...new Set(patternData.map(d => d.pattern).filter(Boolean))];
+
+    // Severity filter control
+    const sevGroup = document.createElement('div');
+    sevGroup.className = 'filter-group view-control';
+    const sevLabel = document.createElement('span');
+    sevLabel.className = 'filter-label';
+    sevLabel.textContent = 'severity';
+    const sevSel = document.createElement('select');
+    sevSel.className = 'filter-select';
+    const sevAllOpt = document.createElement('option');
+    sevAllOpt.value = ''; sevAllOpt.textContent = '— all —';
+    sevSel.appendChild(sevAllOpt);
+    severities.forEach(s => {
+      const o = document.createElement('option');
+      o.value = s; o.textContent = s; o.selected = s === filterState.logSeverity;
+      sevSel.appendChild(o);
+    });
+    sevSel.value = filterState.logSeverity;
+    sevSel.addEventListener('change', async () => {
+      filterState.logSeverity = sevSel.value;
+      // Reset pattern when severity changes so stale selection doesn't persist
+      filterState.logPattern = '';
+      renderView(currentView);
+    });
+    sevGroup.appendChild(sevLabel); sevGroup.appendChild(sevSel);
+    bar.insertBefore(sevGroup, bar.querySelector('.filter-group--right'));
+
+    // Pattern filter control (populated based on current severity)
+    const patGroup = document.createElement('div');
+    patGroup.className = 'filter-group view-control';
+    const patLabel = document.createElement('span');
+    patLabel.className = 'filter-label';
+    patLabel.textContent = 'log pattern';
+    const patSel = document.createElement('select');
+    patSel.className = 'filter-select';
+    const allOpt = document.createElement('option');
+    allOpt.value = ''; allOpt.textContent = '— all patterns —';
+    patSel.appendChild(allOpt);
+    distinctPatterns.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p; o.textContent = p.length > 60 ? p.slice(0, 60) + '…' : p;
+      o.selected = p === filterState.logPattern;
+      patSel.appendChild(o);
+    });
+    patSel.value = filterState.logPattern;
+    patSel.addEventListener('change', () => { filterState.logPattern = patSel.value; renderView(currentView); });
+    patGroup.appendChild(patLabel); patGroup.appendChild(patSel);
+    bar.insertBefore(patGroup, bar.querySelector('.filter-group--right'));
+
+  } else if (view === 'metrics') {
+    const names = await loadViewData('metrics');
+
+    const grp = document.createElement('div');
+    grp.className = 'filter-group view-control';
+    const lbl = document.createElement('span');
+    lbl.className = 'filter-label';
+    lbl.textContent = 'metric name';
+    const sel = document.createElement('select');
+    sel.className = 'filter-select';
+    const allOpt = document.createElement('option');
+    allOpt.value = ''; allOpt.textContent = '— all metrics —';
+    sel.appendChild(allOpt);
+    names.forEach(n => {
+      const o = document.createElement('option');
+      o.value = n; o.textContent = n;
+      o.selected = n === filterState.metricName;
+      sel.appendChild(o);
+    });
+    sel.value = filterState.metricName;
+    sel.addEventListener('change', () => { filterState.metricName = sel.value; renderView(currentView); });
+    grp.appendChild(lbl); grp.appendChild(sel);
+    bar.insertBefore(grp, bar.querySelector('.filter-group--right'));
+
+  } else if (view === 'traces') {
+    const methods = await loadViewData('traces');
+
+    const grp = document.createElement('div');
+    grp.className = 'filter-group view-control';
+    const lbl = document.createElement('span');
+    lbl.className = 'filter-label';
+    lbl.textContent = 'http.url';
+    const sel = document.createElement('select');
+    sel.className = 'filter-select';
+    const allOpt = document.createElement('option');
+    allOpt.value = ''; allOpt.textContent = '— all methods —';
+    sel.appendChild(allOpt);
+    methods.forEach(m => {
+      const o = document.createElement('option');
+      o.value = m; o.textContent = m.length > 60 ? m.slice(0, 60) + '…' : m;
+      o.selected = m === filterState.traceMethod;
+      sel.appendChild(o);
+    });
+    sel.value = filterState.traceMethod;
+    sel.addEventListener('change', () => { filterState.traceMethod = sel.value; renderView(currentView); });
+    grp.appendChild(lbl); grp.appendChild(sel);
+    bar.insertBefore(grp, bar.querySelector('.filter-group--right'));
+  }
 }
 
 function navigate(view) {

@@ -95,3 +95,22 @@ func joinClauses(clauses []string) string {
 func TruncateMetrics(ctx context.Context, conn driver.Conn) error {
 	return conn.Exec(ctx, `TRUNCATE TABLE otel_metrics`)
 }
+
+// QueryMetricNames returns distinct metric names sorted alphabetically.
+func QueryMetricNames(ctx context.Context, conn driver.Conn) ([]string, error) {
+	rows, err := conn.Query(ctx, `SELECT DISTINCT metric_name FROM otel_metrics ORDER BY metric_name ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("query metric names: %w", err)
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scan row: %w", err)
+		}
+		result = append(result, name)
+	}
+	return result, rows.Err()
+}

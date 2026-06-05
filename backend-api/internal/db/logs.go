@@ -19,9 +19,17 @@ type LogRow struct {
 	SeverityText       string            `json:"severity_text"`
 	Body               string            `json:"body"`
 	LogPattern         string            `json:"log_pattern"`
+	ServiceName        string            `json:"service_name"`
 	ResourceAttributes map[string]string `json:"resource_attributes"`
 	ScopeAttributes    map[string]string `json:"scope_attributes"`
 	LogAttributes      map[string]string `json:"log_attributes"`
+}
+
+// LogPatternRow holds aggregated log pattern counts per service.
+type LogPatternRow struct {
+	Pattern     string `json:"pattern"`
+	ServiceName string `json:"service_name"`
+	Count       uint64 `json:"count"`
 }
 
 // InsertLogs batch-inserts log rows into otel_logs.
@@ -47,18 +55,30 @@ func InsertLogs(ctx context.Context, conn driver.Conn, rows []LogRow) error {
 	return batch.Send()
 }
 
-// QueryLogs returns log rows ordered by timestamp DESC with optional service filter.
-func QueryLogs(ctx context.Context, conn driver.Conn, limit, offset int, services []string) ([]LogRow, error) {
+// QueryLogs returns log rows ordered by timestamp DESC with optional filters.
+func QueryLogs(ctx context.Context, conn driver.Conn, limit, offset int, services []string, logPattern, severity string) ([]LogRow, error) {
 	query := `SELECT
 		timestamp, observed_timestamp, trace_id, span_id,
-		severity_number, severity_text, body, log_pattern,
+		severity_number, severity_text, body, log_pattern, service_name,
 		resource_attributes, scope_attributes, log_attributes
 	FROM otel_logs`
 
 	args := []interface{}{}
+	clauses := []string{}
 	if len(services) > 0 {
-		query += ` WHERE service_name IN (?)`
+		clauses = append(clauses, `service_name IN (?)`)
 		args = append(args, services)
+	}
+	if logPattern != "" {
+		clauses = append(clauses, `log_pattern = ?`)
+		args = append(args, logPattern)
+	}
+	if severity != "" {
+		clauses = append(clauses, `severity_text = ?`)
+		args = append(args, severity)
+	}
+	if len(clauses) > 0 {
+		query += ` WHERE ` + joinLogClauses(clauses)
 	}
 	query += ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
@@ -74,7 +94,7 @@ func QueryLogs(ctx context.Context, conn driver.Conn, limit, offset int, service
 		var r LogRow
 		if err := rows.Scan(
 			&r.Timestamp, &r.ObservedTimestamp, &r.TraceID, &r.SpanID,
-			&r.SeverityNumber, &r.SeverityText, &r.Body, &r.LogPattern,
+			&r.SeverityNumber, &r.SeverityText, &r.Body, &r.LogPattern, &r.ServiceName,
 			&r.ResourceAttributes, &r.ScopeAttributes, &r.LogAttributes,
 		); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
@@ -82,6 +102,103 @@ func QueryLogs(ctx context.Context, conn driver.Conn, limit, offset int, service
 		result = append(result, r)
 	}
 	return result, rows.Err()
+}
+
+// QueryLogPatterns returns distinct (log_pattern, service_name) pairs with counts, optionally filtered by severity.
+func QueryLogPatterns(ctx context.Context, conn driver.Conn, services []string, severity string) ([]LogPatternRow, error) {
+	query := `SELECT log_pattern, service_name, count() AS cnt FROM otel_logs`
+	args := []interface{}{}
+	clauses := []string{}
+	if len(services) > 0 {
+		clauses = append(clauses, `service_name IN (?)`)
+		args = append(args, services)
+	}
+	if severity != "" {
+		clauses = append(clauses, `severity_text = ?`)
+		args = append(args, severity)
+	}
+	if len(clauses) > 0 {
+		query += ` WHERE ` + joinLogClauses(clauses)
+	}
+	query += ` GROUP BY log_pattern, service_name ORDER BY cnt DESC`
+
+	rows, err := conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query log patterns: %w", err)
+	}
+	defer rows.Close()
+
+	var result []LogPatternRow
+	for rows.Next() {
+		var r LogPatternRow
+		if err := rows.Scan(&r.Pattern, &r.ServiceName, &r.Count); err != nil {
+			return nil, fmt.Errorf("scan row: %w", err)
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+// QueryLogSeverities returns distinct severity_text values, optionally filtered by services.
+func QueryLogSeverities(ctx context.Context, conn driver.Conn, services []string) ([]string, error) {
+	query := `SELECT DISTINCT severity_text FROM otel_logs WHERE severity_text != ''`
+	args := []interface{}{}
+	if len(services) > 0 {
+		query += ` AND service_name IN (?)`
+		args = append(args, services)
+	}
+	query += ` ORDER BY severity_text ASC`
+
+	rows, err := conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query log severities: %w", err)
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, fmt.Errorf("scan row: %w", err)
+		}
+		result = append(result, s)
+	}
+	return result, rows.Err()
+}
+
+// QueryLogServices returns distinct service_name values filtered by severity.
+func QueryLogServices(ctx context.Context, conn driver.Conn, severity string) ([]string, error) {
+	query := `SELECT DISTINCT service_name FROM otel_logs WHERE service_name != ''`
+	args := []interface{}{}
+	if severity != "" {
+		query += ` AND severity_text = ?`
+		args = append(args, severity)
+	}
+	query += ` ORDER BY service_name ASC`
+
+	rows, err := conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query log services: %w", err)
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, fmt.Errorf("scan row: %w", err)
+		}
+		result = append(result, s)
+	}
+	return result, rows.Err()
+}
+
+func joinLogClauses(clauses []string) string {
+	result := clauses[0]
+	for _, c := range clauses[1:] {
+		result += ` AND ` + c
+	}
+	return result
 }
 
 // TruncateLogs removes all rows from otel_logs.
