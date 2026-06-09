@@ -1,8 +1,6 @@
 package db
 
 import (
-	"time"
-
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
@@ -17,9 +15,8 @@ func NewConn(dsn string) (driver.Conn, error) {
 		"async_insert":           1,
 		"wait_for_async_insert":  0,
 	}
-	opts.MaxOpenConns = 100
-	opts.MaxIdleConns = 30
-	opts.ConnMaxLifetime = 10 * time.Minute
+	opts.MaxOpenConns = 10
+	opts.MaxIdleConns = 5
 
 	return clickhouse.Open(opts)
 }

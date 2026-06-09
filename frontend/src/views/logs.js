@@ -19,7 +19,7 @@ export async function renderLogs(container, params = {}) {
     if (services.length > 0) qs.set('services', services.join(','));
     if (logPattern) qs.set('log_pattern', logPattern);
     if (logSeverity) qs.set('severity', logSeverity);
-    const res = await fetch(`/api/v1/logs?${qs}`, { signal: params.signal });
+    const res = await fetch(`/api/v1/logs?${qs}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     data = await res.json();
   } catch (err) {

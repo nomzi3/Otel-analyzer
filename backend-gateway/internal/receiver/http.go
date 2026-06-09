@@ -47,7 +47,7 @@ func readBody(w http.ResponseWriter, req *http.Request) ([]byte, bool) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return nil, false
 	}
-	body, err := io.ReadAll(io.LimitReader(req.Body, 32<<20))
+	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
 		return nil, false

@@ -104,15 +104,21 @@ func QueryLogs(ctx context.Context, conn driver.Conn, limit, offset int, service
 	return result, rows.Err()
 }
 
-// QueryLogPatterns returns distinct (log_pattern, service_name) pairs with counts, optionally filtered by service.
-// Reads from the pre-aggregated materialized view for O(1) vs full-table-scan.
-// Note: severity filtering is not available on the aggregate table; it is omitted here.
-func QueryLogPatterns(ctx context.Context, conn driver.Conn, services []string, _ string) ([]LogPatternRow, error) {
-	query := `SELECT log_pattern, service_name, sum(cnt) AS cnt FROM otel_logs_patterns_agg FINAL`
+// QueryLogPatterns returns distinct (log_pattern, service_name) pairs with counts, optionally filtered by severity.
+func QueryLogPatterns(ctx context.Context, conn driver.Conn, services []string, severity string) ([]LogPatternRow, error) {
+	query := `SELECT log_pattern, service_name, count() AS cnt FROM otel_logs`
 	args := []interface{}{}
+	clauses := []string{}
 	if len(services) > 0 {
-		query += ` WHERE service_name IN (?)`
+		clauses = append(clauses, `service_name IN (?)`)
 		args = append(args, services)
+	}
+	if severity != "" {
+		clauses = append(clauses, `severity_text = ?`)
+		args = append(args, severity)
+	}
+	if len(clauses) > 0 {
+		query += ` WHERE ` + joinLogClauses(clauses)
 	}
 	query += ` GROUP BY log_pattern, service_name ORDER BY cnt DESC`
 

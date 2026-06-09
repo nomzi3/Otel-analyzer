@@ -47,7 +47,7 @@ func (s *GRPCServer) Start(port string) error {
 	if err != nil {
 		return fmt.Errorf("gRPC listen %s: %w", addr, err)
 	}
-	server := grpc.NewServer(grpc.MaxRecvMsgSize(32 << 20))
+	server := grpc.NewServer()
 	s.RegisterServices(server)
 	log.Printf("gRPC OTLP receiver listening on %s", addr)
 	return server.Serve(lis)
