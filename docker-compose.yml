@@ -22,13 +22,8 @@ services:
       - --rpc-addr redpanda:33145
       - --advertise-rpc-addr redpanda:33145
       - --mode dev-container
-      - --smp 4
+      - --smp 1
       - --default-log-level=warn
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 2G
     ports:
       - "9092:9092"
       - "9644:9644"
@@ -51,12 +46,12 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
-        rpk topic create otel-logs --brokers redpanda:9092 --partitions 12 --replicas 1 \
-          -c retention.ms=3600000 -c retention.bytes=10737418240 -c compression.type=snappy || true
-        rpk topic create otel-metrics --brokers redpanda:9092 --partitions 12 --replicas 1 \
-          -c retention.ms=3600000 -c retention.bytes=10737418240 -c compression.type=snappy || true
-        rpk topic create otel-traces --brokers redpanda:9092 --partitions 12 --replicas 1 \
-          -c retention.ms=3600000 -c retention.bytes=10737418240 -c compression.type=snappy || true
+        rpk topic create otel-logs --brokers redpanda:9092 --partitions 4 --replicas 1 \
+          -c retention.ms=900000 -c retention.bytes=1073741824 || true
+        rpk topic create otel-metrics --brokers redpanda:9092 --partitions 4 --replicas 1 \
+          -c retention.ms=900000 -c retention.bytes=1073741824 || true
+        rpk topic create otel-traces --brokers redpanda:9092 --partitions 4 --replicas 1 \
+          -c retention.ms=900000 -c retention.bytes=1073741824 || true
     restart: "no"
     networks:
       - otel-net
@@ -78,11 +73,6 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
-    deploy:
-      resources:
-        limits:
-          cpus: '8.0'
-          memory: 8G
     networks:
       - otel-net
 
@@ -105,11 +95,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 512M
     networks:
       - otel-net
 
@@ -117,7 +102,7 @@ services:
     build: ./backend-ingester
     environment:
       REDPANDA_BROKERS: redpanda:9092
-      CLICKHOUSE_DSN: clickhouse://clickhouse:9000/default
+      API_BASE_URL: http://backend-api:8080
       KAFKA_TOPIC_LOGS: ${KAFKA_TOPIC_LOGS}
       KAFKA_TOPIC_METRICS: ${KAFKA_TOPIC_METRICS}
       KAFKA_TOPIC_TRACES: ${KAFKA_TOPIC_TRACES}
@@ -125,13 +110,8 @@ services:
     depends_on:
       redpanda-init:
         condition: service_completed_successfully
-      clickhouse:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 1G
+      backend-api:
+        condition: service_started
     networks:
       - otel-net
 
@@ -150,11 +130,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 512M
     networks:
       - otel-net
 
@@ -187,7 +162,7 @@ services:
       - "19090:9090"
     command:
       - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.retention.time=24h
+      - --storage.tsdb.retention.time=1h
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus

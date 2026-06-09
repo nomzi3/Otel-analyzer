@@ -194,10 +194,15 @@ func TruncateTraces(ctx context.Context, conn driver.Conn) error {
 	return conn.Exec(ctx, `TRUNCATE TABLE otel_spans`)
 }
 
-// QueryServices returns distinct service names using the pre-aggregated materialized view,
-// avoiding 3 full-table scans on every request.
+// QueryServices returns distinct service names across all three signal tables.
 func QueryServices(ctx context.Context, conn driver.Conn) ([]string, error) {
-	query := `SELECT service_name FROM otel_services_agg FINAL WHERE service_name != '' ORDER BY service_name ASC`
+	query := `SELECT DISTINCT service_name FROM (
+		SELECT service_name FROM otel_logs WHERE service_name != ''
+		UNION ALL
+		SELECT service_name FROM otel_metrics WHERE service_name != ''
+		UNION ALL
+		SELECT service_name FROM otel_trace_roots WHERE service_name != ''
+	) ORDER BY service_name ASC`
 
 	rows, err := conn.Query(ctx, query)
 	if err != nil {

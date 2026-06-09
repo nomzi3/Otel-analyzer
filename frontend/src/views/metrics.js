@@ -14,7 +14,7 @@ export async function renderMetrics(container, params = {}) {
     const qs = new URLSearchParams({ limit, offset });
     if (metricName) qs.set('metric_name', metricName);
     if (services.length > 0) qs.set('services', services.join(','));
-    const res = await fetch(`/api/v1/metrics?${qs}`, { signal: params.signal });
+    const res = await fetch(`/api/v1/metrics?${qs}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     data = await res.json();
   } catch (err) {
@@ -202,7 +202,7 @@ function formatMetricValue(m) {
 
 function stableJson(obj) {
   const keys = Object.keys(obj || {}).sort();
-  return keys.map(k => `${k}=${obj[k]}`).join('\x01');
+  return JSON.stringify(Object.fromEntries(keys.map(k => [k, obj[k]])));
 }
 
 function escapeHtml(str) {

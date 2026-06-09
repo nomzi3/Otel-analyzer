@@ -10,11 +10,10 @@ export async function renderAll(container, params = {}) {
   const svcQS = services.length > 0 ? `&services=${encodeURIComponent(services.join(','))}` : '';
 
   try {
-    const fetchOpts = params.signal ? { signal: params.signal } : {};
     const [logsRes, metricsRes, tracesRes] = await Promise.allSettled([
-      fetch(`/api/v1/logs?limit=30&offset=0${svcQS}`, fetchOpts),
-      fetch(`/api/v1/metrics?limit=30&offset=0${svcQS}`, fetchOpts),
-      fetch(`/api/v1/traces?limit=30&offset=0${svcQS}`, fetchOpts),
+      fetch(`/api/v1/logs?limit=30&offset=0${svcQS}`),
+      fetch(`/api/v1/metrics?limit=30&offset=0${svcQS}`),
+      fetch(`/api/v1/traces?limit=30&offset=0${svcQS}`),
     ]);
 
     if (logsRes.status === 'fulfilled' && logsRes.value.ok) {

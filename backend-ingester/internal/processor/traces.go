@@ -9,16 +9,6 @@ import (
 )
 
 func ProcessTraces(td ptrace.Traces) (roots []types.TraceRootRow, spans []types.SpanRow) {
-	totalSpans := 0
-	for i := 0; i < td.ResourceSpans().Len(); i++ {
-		rs := td.ResourceSpans().At(i)
-		for j := 0; j < rs.ScopeSpans().Len(); j++ {
-			totalSpans += rs.ScopeSpans().At(j).Spans().Len()
-		}
-	}
-	roots = make([]types.TraceRootRow, 0, totalSpans/4) // roots are a subset
-	spans = make([]types.SpanRow, 0, totalSpans)
-
 	for i := 0; i < td.ResourceSpans().Len(); i++ {
 		rs := td.ResourceSpans().At(i)
 		resAttrs := resAttrsToMap(rs.Resource().Attributes())
