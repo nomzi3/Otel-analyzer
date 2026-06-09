@@ -4,7 +4,6 @@ import (
 	"regexp"
 	"strings"
 
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 
 	"github.com/otel-analyzer/backend-ingester/internal/types"
@@ -27,29 +26,20 @@ func extractPattern(body string) string {
 	return strings.TrimSpace(s)
 }
 
-func mapFromAttrs(attrs pcommon.Map) map[string]string {
-	m := make(map[string]string)
-	attrs.Range(func(k string, v pcommon.Value) bool {
-		m[k] = v.AsString()
-		return true
-	})
-	return m
-}
-
 func ProcessLogs(ld plog.Logs) []types.LogRow {
-	var rows []types.LogRow
+	rows := make([]types.LogRow, 0, ld.ResourceLogs().Len()*10)
 
 	for i := 0; i < ld.ResourceLogs().Len(); i++ {
 		rl := ld.ResourceLogs().At(i)
-		resAttrs := mapFromAttrs(rl.Resource().Attributes())
+		resAttrs := attrsToMap(rl.Resource().Attributes())
 
 		for j := 0; j < rl.ScopeLogs().Len(); j++ {
 			sl := rl.ScopeLogs().At(j)
-			scopeAttrs := mapFromAttrs(sl.Scope().Attributes())
+			scopeAttrs := attrsToMap(sl.Scope().Attributes())
 
 			for k := 0; k < sl.LogRecords().Len(); k++ {
 				rec := sl.LogRecords().At(k)
-				logAttrs := mapFromAttrs(rec.Attributes())
+				logAttrs := attrsToMap(rec.Attributes())
 
 				body := rec.Body().AsString()
 				row := types.LogRow{

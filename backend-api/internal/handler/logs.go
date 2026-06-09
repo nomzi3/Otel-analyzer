@@ -3,8 +3,6 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/otel-analyzer/backend-api/internal/db"
@@ -43,8 +41,7 @@ func GetLogs(conn driver.Conn) http.HandlerFunc {
 		if rows == nil {
 			rows = []db.LogRow{}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(rows)
+		writeJSON(w, rows)
 	}
 }
 
@@ -60,8 +57,7 @@ func GetLogPatterns(conn driver.Conn) http.HandlerFunc {
 		if rows == nil {
 			rows = []db.LogPatternRow{}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(rows)
+		writeJSON(w, rows)
 	}
 }
 
@@ -76,8 +72,7 @@ func GetLogSeverities(conn driver.Conn) http.HandlerFunc {
 		if severities == nil {
 			severities = []string{}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(severities)
+		writeJSON(w, severities)
 	}
 }
 
@@ -92,8 +87,7 @@ func GetLogServices(conn driver.Conn) http.HandlerFunc {
 		if services == nil {
 			services = []string{}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(services)
+		writeJSON(w, services)
 	}
 }
 
@@ -107,40 +101,3 @@ func DeleteLogs(conn driver.Conn) http.HandlerFunc {
 	}
 }
 
-// helpers shared across handler files
-func clampLimit(s string, defaultVal int) int {
-	v := parseInt(s, defaultVal)
-	if v <= 0 {
-		return defaultVal
-	}
-	if v > 1000 {
-		return 1000
-	}
-	return v
-}
-
-func parseServices(s string) []string {
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	var result []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			result = append(result, p)
-		}
-	}
-	return result
-}
-
-func parseInt(s string, defaultVal int) int {
-	if s == "" {
-		return defaultVal
-	}
-	v, err := strconv.Atoi(s)
-	if err != nil {
-		return defaultVal
-	}
-	return v
-}

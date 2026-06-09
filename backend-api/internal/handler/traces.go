@@ -52,8 +52,7 @@ func GetTraces(conn driver.Conn) http.HandlerFunc {
 		if rows == nil {
 			rows = []db.TraceRootRow{}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(rows)
+		writeJSON(w, rows)
 	}
 }
 
@@ -67,8 +66,7 @@ func GetTraceMethods(conn driver.Conn) http.HandlerFunc {
 		if methods == nil {
 			methods = []string{}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(methods)
+		writeJSON(w, methods)
 	}
 }
 
@@ -83,8 +81,7 @@ func GetTraceSpans(conn driver.Conn) http.HandlerFunc {
 		if rows == nil {
 			rows = []db.SpanRow{}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(rows)
+		writeJSON(w, rows)
 	}
 }
 

@@ -17,8 +17,13 @@ var (
 		Name: "ingester_datapoints_processed_total",
 		Help: "Total number of metric data points processed.",
 	})
+
+	IngestFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ingester_ingest_failures_total",
+		Help: "Total number of records dropped after all retries exhausted, by topic.",
+	}, []string{"topic"})
 )
 
 func init() {
-	prometheus.MustRegister(LogsProcessed, RootTracesProcessed, DatapointsProcessed)
+	prometheus.MustRegister(LogsProcessed, RootTracesProcessed, DatapointsProcessed, IngestFailures)
 }

@@ -96,6 +96,56 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;');
 }
 
+export { escapeHtml };
+
+export function escapeAttr(str) {
+  return String(str).replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+export function buildPagination(offset, itemCount, limit, onPrev, onNext) {
+  const pag = document.createElement('div');
+  pag.className = 'pagination';
+  const prev = document.createElement('button');
+  prev.textContent = '← Prev';
+  prev.disabled = offset === 0;
+  prev.addEventListener('click', onPrev);
+  const next = document.createElement('button');
+  next.textContent = 'Next →';
+  next.disabled = itemCount < limit;
+  next.addEventListener('click', onNext);
+  const info = document.createElement('span');
+  info.className = 'page-info';
+  info.textContent = itemCount === 0
+    ? 'No results'
+    : `Showing ${offset + 1}–${offset + itemCount}`;
+  pag.append(prev, info, next);
+  return pag;
+}
+
+export function sortByResourceAttr(items, attr) {
+  if (!attr) return items;
+  return [...items].sort((a, b) => {
+    const va = String((a.resource_attributes || {})[attr] ?? '');
+    const vb = String((b.resource_attributes || {})[attr] ?? '');
+    return va.localeCompare(vb);
+  });
+}
+
+export function normalizeResponse(data, primaryKey) {
+  if (Array.isArray(data)) return data;
+  return data[primaryKey] || data.items || data.data || [];
+}
+
+export function statusBadge(status) {
+  const s = String(status).toUpperCase();
+  if (s === 'ERROR' || s === '2') return `<span class="badge badge-error">ERROR</span>`;
+  if (s === 'OK' || s === '1') return `<span class="badge badge-info">OK</span>`;
+  return `<span class="badge badge-debug">UNSET</span>`;
+}
+
+export function getServiceName(item) { return item.service_name || item.service || ''; }
+export function getTimestamp(item)   { return item.timestamp || item.time_unix_nano || ''; }
+
 // Modal helpers
 let _modalOverlay = null;
 

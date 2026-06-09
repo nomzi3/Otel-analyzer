@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -18,8 +17,7 @@ func GetServices(conn driver.Conn) http.HandlerFunc {
 		if names == nil {
 			names = []string{}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(names)
+		writeJSON(w, names)
 	}
 }
 
@@ -33,7 +31,6 @@ func GetResourceAttributeKeys(conn driver.Conn) http.HandlerFunc {
 		if keys == nil {
 			keys = []string{}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(keys)
+		writeJSON(w, keys)
 	}
 }

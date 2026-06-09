@@ -78,7 +78,7 @@ func QueryLogs(ctx context.Context, conn driver.Conn, limit, offset int, service
 		args = append(args, severity)
 	}
 	if len(clauses) > 0 {
-		query += ` WHERE ` + joinLogClauses(clauses)
+		query += ` WHERE ` + joinClauses(clauses)
 	}
 	query += ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
@@ -118,7 +118,7 @@ func QueryLogPatterns(ctx context.Context, conn driver.Conn, services []string, 
 		args = append(args, severity)
 	}
 	if len(clauses) > 0 {
-		query += ` WHERE ` + joinLogClauses(clauses)
+		query += ` WHERE ` + joinClauses(clauses)
 	}
 	query += ` GROUP BY log_pattern, service_name ORDER BY cnt DESC`
 
@@ -193,13 +193,6 @@ func QueryLogServices(ctx context.Context, conn driver.Conn, severity string) ([
 	return result, rows.Err()
 }
 
-func joinLogClauses(clauses []string) string {
-	result := clauses[0]
-	for _, c := range clauses[1:] {
-		result += ` AND ` + c
-	}
-	return result
-}
 
 // TruncateLogs removes all rows from otel_logs.
 func TruncateLogs(ctx context.Context, conn driver.Conn) error {

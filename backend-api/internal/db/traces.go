@@ -102,7 +102,7 @@ func QueryTraces(ctx context.Context, conn driver.Conn, limit, offset int, servi
 		args = append(args, method)
 	}
 	if len(clauses) > 0 {
-		query += ` WHERE ` + joinTraceClauses(clauses)
+		query += ` WHERE ` + joinClauses(clauses)
 	}
 	query += ` ORDER BY start_time DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
@@ -178,13 +178,6 @@ func QueryTraceMethods(ctx context.Context, conn driver.Conn) ([]string, error) 
 	return result, rows.Err()
 }
 
-func joinTraceClauses(clauses []string) string {
-	result := clauses[0]
-	for _, c := range clauses[1:] {
-		result += ` AND ` + c
-	}
-	return result
-}
 
 // TruncateTraces removes all rows from both otel_trace_roots and otel_spans.
 func TruncateTraces(ctx context.Context, conn driver.Conn) error {

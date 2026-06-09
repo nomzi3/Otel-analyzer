@@ -83,13 +83,6 @@ func QueryMetrics(ctx context.Context, conn driver.Conn, limit, offset int, metr
 	return result, rows.Err()
 }
 
-func joinClauses(clauses []string) string {
-	result := clauses[0]
-	for _, c := range clauses[1:] {
-		result += ` AND ` + c
-	}
-	return result
-}
 
 // TruncateMetrics removes all rows from otel_metrics.
 func TruncateMetrics(ctx context.Context, conn driver.Conn) error {

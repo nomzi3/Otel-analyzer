@@ -11,7 +11,7 @@ import (
 func ProcessTraces(td ptrace.Traces) (roots []types.TraceRootRow, spans []types.SpanRow) {
 	for i := 0; i < td.ResourceSpans().Len(); i++ {
 		rs := td.ResourceSpans().At(i)
-		resAttrs := resAttrsToMap(rs.Resource().Attributes())
+		resAttrs := attrsToMap(rs.Resource().Attributes())
 		serviceName := resAttrs["service.name"]
 
 		for j := 0; j < rs.ScopeSpans().Len(); j++ {
@@ -19,7 +19,7 @@ func ProcessTraces(td ptrace.Traces) (roots []types.TraceRootRow, spans []types.
 
 			for k := 0; k < ss.Spans().Len(); k++ {
 				span := ss.Spans().At(k)
-				spanAttrs := resAttrsToMap(span.Attributes())
+				spanAttrs := attrsToMap(span.Attributes())
 
 				startTime := span.StartTimestamp().AsTime()
 				endTime := span.EndTimestamp().AsTime()
