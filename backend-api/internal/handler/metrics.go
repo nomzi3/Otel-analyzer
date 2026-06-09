@@ -38,8 +38,7 @@ func GetMetrics(conn driver.Conn) http.HandlerFunc {
 		if rows == nil {
 			rows = []db.MetricRow{}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(rows)
+		writeJSON(w, rows)
 	}
 }
 
@@ -53,8 +52,7 @@ func GetMetricNames(conn driver.Conn) http.HandlerFunc {
 		if names == nil {
 			names = []string{}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(names)
+		writeJSON(w, names)
 	}
 }
 

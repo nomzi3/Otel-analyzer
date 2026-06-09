@@ -1,27 +1,17 @@
 package processor
 
 import (
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 
 	"github.com/otel-analyzer/backend-ingester/internal/types"
 )
 
-func resAttrsToMap(attrs pcommon.Map) map[string]string {
-	m := make(map[string]string)
-	attrs.Range(func(k string, v pcommon.Value) bool {
-		m[k] = v.AsString()
-		return true
-	})
-	return m
-}
-
 func ProcessMetrics(md pmetric.Metrics) []types.MetricRow {
-	var rows []types.MetricRow
+	rows := make([]types.MetricRow, 0, md.ResourceMetrics().Len()*10)
 
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
-		resAttrs := resAttrsToMap(rm.Resource().Attributes())
+		resAttrs := attrsToMap(rm.Resource().Attributes())
 		serviceName := resAttrs["service.name"]
 
 		for j := 0; j < rm.ScopeMetrics().Len(); j++ {
@@ -36,7 +26,7 @@ func ProcessMetrics(md pmetric.Metrics) []types.MetricRow {
 					dps := m.Gauge().DataPoints()
 					for d := 0; d < dps.Len(); d++ {
 						dp := dps.At(d)
-						attrs := resAttrsToMap(dp.Attributes())
+						attrs := attrsToMap(dp.Attributes())
 						var val float64
 						if dp.ValueType() == pmetric.NumberDataPointValueTypeDouble {
 							val = dp.DoubleValue()
@@ -58,7 +48,7 @@ func ProcessMetrics(md pmetric.Metrics) []types.MetricRow {
 					dps := m.Sum().DataPoints()
 					for d := 0; d < dps.Len(); d++ {
 						dp := dps.At(d)
-						attrs := resAttrsToMap(dp.Attributes())
+						attrs := attrsToMap(dp.Attributes())
 						var val float64
 						if dp.ValueType() == pmetric.NumberDataPointValueTypeDouble {
 							val = dp.DoubleValue()
@@ -80,7 +70,7 @@ func ProcessMetrics(md pmetric.Metrics) []types.MetricRow {
 					dps := m.Histogram().DataPoints()
 					for d := 0; d < dps.Len(); d++ {
 						dp := dps.At(d)
-						attrs := resAttrsToMap(dp.Attributes())
+						attrs := attrsToMap(dp.Attributes())
 						rows = append(rows, types.MetricRow{
 							Timestamp:          dp.Timestamp().AsTime(),
 							MetricName:         name,
@@ -96,7 +86,7 @@ func ProcessMetrics(md pmetric.Metrics) []types.MetricRow {
 					dps := m.ExponentialHistogram().DataPoints()
 					for d := 0; d < dps.Len(); d++ {
 						dp := dps.At(d)
-						attrs := resAttrsToMap(dp.Attributes())
+						attrs := attrsToMap(dp.Attributes())
 						rows = append(rows, types.MetricRow{
 							Timestamp:          dp.Timestamp().AsTime(),
 							MetricName:         name,
@@ -112,7 +102,7 @@ func ProcessMetrics(md pmetric.Metrics) []types.MetricRow {
 					dps := m.Summary().DataPoints()
 					for d := 0; d < dps.Len(); d++ {
 						dp := dps.At(d)
-						attrs := resAttrsToMap(dp.Attributes())
+						attrs := attrsToMap(dp.Attributes())
 						rows = append(rows, types.MetricRow{
 							Timestamp:          dp.Timestamp().AsTime(),
 							MetricName:         name,

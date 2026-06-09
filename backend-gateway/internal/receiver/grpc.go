@@ -11,8 +11,6 @@ import (
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
-	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
-	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
@@ -51,39 +49,6 @@ func (s *GRPCServer) Start(port string) error {
 	s.RegisterServices(server)
 	log.Printf("gRPC OTLP receiver listening on %s", addr)
 	return server.Serve(lis)
-}
-
-// serviceNameFromAttrs finds "service.name" in a proto attribute list.
-func serviceNameFromAttrs(attrs []*commonpb.KeyValue) string {
-	for _, kv := range attrs {
-		if kv.Key == "service.name" {
-			if sv, ok := kv.Value.GetValue().(*commonpb.AnyValue_StringValue); ok {
-				return sv.StringValue
-			}
-		}
-	}
-	return "unknown"
-}
-
-// countDataPointsProto returns the number of data points in a proto Metric.
-func countDataPointsProto(m *metricspb.Metric) int {
-	if m == nil {
-		return 0
-	}
-	switch d := m.Data.(type) {
-	case *metricspb.Metric_Gauge:
-		return len(d.Gauge.DataPoints)
-	case *metricspb.Metric_Sum:
-		return len(d.Sum.DataPoints)
-	case *metricspb.Metric_Histogram:
-		return len(d.Histogram.DataPoints)
-	case *metricspb.Metric_ExponentialHistogram:
-		return len(d.ExponentialHistogram.DataPoints)
-	case *metricspb.Metric_Summary:
-		return len(d.Summary.DataPoints)
-	default:
-		return 0
-	}
 }
 
 // --- logs handler ---

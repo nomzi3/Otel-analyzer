@@ -46,6 +46,7 @@ func (p *Processor) handle(ctx context.Context, r *kgo.Record) {
 		}
 		if err := p.apiClient.PostLogs(ctx, rows); err != nil {
 			log.Printf("post logs error: %v", err)
+			metrics.IngestFailures.WithLabelValues(r.Topic).Inc()
 			return
 		}
 		metrics.LogsProcessed.Add(float64(len(rows)))
@@ -63,6 +64,7 @@ func (p *Processor) handle(ctx context.Context, r *kgo.Record) {
 		}
 		if err := p.apiClient.PostMetrics(ctx, rows); err != nil {
 			log.Printf("post metrics error: %v", err)
+			metrics.IngestFailures.WithLabelValues(r.Topic).Inc()
 			return
 		}
 		metrics.DatapointsProcessed.Add(float64(len(rows)))
@@ -80,6 +82,7 @@ func (p *Processor) handle(ctx context.Context, r *kgo.Record) {
 		}
 		if err := p.apiClient.PostTraces(ctx, roots, spans); err != nil {
 			log.Printf("post traces error: %v", err)
+			metrics.IngestFailures.WithLabelValues(r.Topic).Inc()
 			return
 		}
 		metrics.RootTracesProcessed.Add(float64(len(roots)))
