@@ -22,6 +22,9 @@ const filterState = {
 
 let currentView = 'all';
 
+// Cancels in-flight fetch when a new view render starts.
+let renderAbortCtrl = new AbortController();
+
 function getViewFromHash() {
   const hash = window.location.hash.replace('#', '').toLowerCase();
   return VIEW_MAP[hash] ? hash : 'all';
@@ -53,11 +56,16 @@ async function renderView(view, extraParams = {}) {
     return;
   }
 
-  const params = { ...extraParams, ...filterState };
+  // Cancel any in-flight fetch from a previous render.
+  renderAbortCtrl.abort();
+  renderAbortCtrl = new AbortController();
+
+  const params = { ...extraParams, ...filterState, signal: renderAbortCtrl.signal };
 
   try {
     await fn(container, params);
   } catch (err) {
+    if (err.name === 'AbortError') return; // stale render, silently discard
     container.innerHTML = `
       <div class="error-box">
         <span>⚠</span>

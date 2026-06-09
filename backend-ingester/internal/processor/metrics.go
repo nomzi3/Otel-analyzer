@@ -16,8 +16,34 @@ func resAttrsToMap(attrs pcommon.Map) map[string]string {
 	return m
 }
 
+func countDataPoints(m pmetric.Metric) int {
+	switch m.Type() {
+	case pmetric.MetricTypeGauge:
+		return m.Gauge().DataPoints().Len()
+	case pmetric.MetricTypeSum:
+		return m.Sum().DataPoints().Len()
+	case pmetric.MetricTypeHistogram:
+		return m.Histogram().DataPoints().Len()
+	case pmetric.MetricTypeExponentialHistogram:
+		return m.ExponentialHistogram().DataPoints().Len()
+	case pmetric.MetricTypeSummary:
+		return m.Summary().DataPoints().Len()
+	}
+	return 0
+}
+
 func ProcessMetrics(md pmetric.Metrics) []types.MetricRow {
-	var rows []types.MetricRow
+	total := 0
+	for i := 0; i < md.ResourceMetrics().Len(); i++ {
+		rm := md.ResourceMetrics().At(i)
+		for j := 0; j < rm.ScopeMetrics().Len(); j++ {
+			sm := rm.ScopeMetrics().At(j)
+			for k := 0; k < sm.Metrics().Len(); k++ {
+				total += countDataPoints(sm.Metrics().At(k))
+			}
+		}
+	}
+	rows := make([]types.MetricRow, 0, total)
 
 	for i := 0; i < md.ResourceMetrics().Len(); i++ {
 		rm := md.ResourceMetrics().At(i)
