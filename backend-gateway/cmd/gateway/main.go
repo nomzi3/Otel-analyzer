@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/otel-analyzer/backend-gateway/internal/producer"
 	"github.com/otel-analyzer/backend-gateway/internal/receiver"
@@ -68,5 +69,10 @@ func main() {
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
 	sig := <-quit
 	log.Printf("received signal %s, shutting down", sig)
-	_ = context.Background()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := prod.Flush(ctx); err != nil {
+		log.Printf("flush producer: %v", err)
+	}
 }

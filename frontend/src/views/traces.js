@@ -14,7 +14,7 @@ export async function renderTraces(container, params = {}) {
     const qs = new URLSearchParams({ limit, offset });
     if (services.length > 0) qs.set('services', services.join(','));
     if (traceMethod) qs.set('method', traceMethod);
-    const res = await fetch(`/api/v1/traces?${qs}`);
+    const res = await fetch(`/api/v1/traces?${qs}`, { signal: params.signal });
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     data = await res.json();
   } catch (err) {
@@ -185,15 +185,20 @@ function renderSpanTree(spans) {
     return div;
   }
 
-  const byId = {};
+  // Build O(1) lookup maps once — avoids O(N²) filter-per-span below.
+  const byId = new Map();
+  spans.forEach(s => byId.set(s.span_id || s.spanId || s.id, s));
+
+  const childrenMap = new Map();
   spans.forEach(s => {
-    const id = s.span_id || s.spanId || s.id;
-    byId[id] = s;
+    const pid = s.parent_span_id || s.parentSpanId || '';
+    if (!childrenMap.has(pid)) childrenMap.set(pid, []);
+    childrenMap.get(pid).push(s);
   });
 
   const roots = spans.filter(s => {
     const parent = s.parent_span_id || s.parentSpanId || '';
-    return !parent || !byId[parent];
+    return !parent || !byId.has(parent);
   });
 
   function renderSpan(span, depth) {
@@ -229,8 +234,9 @@ function renderSpanTree(spans) {
     div.appendChild(item);
     div.appendChild(attrsPanel);
 
+    // O(1) children lookup via pre-built map — replaces O(N) spans.filter()
     const spanId = span.span_id || span.spanId || span.id;
-    const children = spans.filter(s => (s.parent_span_id || s.parentSpanId) === spanId);
+    const children = childrenMap.get(spanId) || [];
     children.forEach(child => renderSpan(child, depth + 1));
   }
 
