@@ -44,14 +44,21 @@ services:
       redpanda:
         condition: service_healthy
     entrypoint: ["/bin/bash", "-c"]
+    environment:
+      KAFKA_TOPIC_LOGS: ${KAFKA_TOPIC_LOGS:-otel-logs}
+      KAFKA_TOPIC_METRICS: ${KAFKA_TOPIC_METRICS:-otel-metrics}
+      KAFKA_TOPIC_TRACES: ${KAFKA_TOPIC_TRACES:-otel-traces}
+      KAFKA_PARTITIONS: ${KAFKA_PARTITIONS:-4}
+      KAFKA_RETENTION_MS: ${KAFKA_RETENTION_MS:-900000}
+      KAFKA_RETENTION_BYTES: ${KAFKA_RETENTION_BYTES:-1073741824}
     command:
       - |
-        rpk topic create otel-logs --brokers redpanda:9092 --partitions 4 --replicas 1 \
-          -c retention.ms=900000 -c retention.bytes=1073741824 || true
-        rpk topic create otel-metrics --brokers redpanda:9092 --partitions 4 --replicas 1 \
-          -c retention.ms=900000 -c retention.bytes=1073741824 || true
-        rpk topic create otel-traces --brokers redpanda:9092 --partitions 4 --replicas 1 \
-          -c retention.ms=900000 -c retention.bytes=1073741824 || true
+        rpk topic create $KAFKA_TOPIC_LOGS --brokers redpanda:9092 --partitions $KAFKA_PARTITIONS --replicas 1 \
+          -c retention.ms=$KAFKA_RETENTION_MS -c retention.bytes=$KAFKA_RETENTION_BYTES || true
+        rpk topic create $KAFKA_TOPIC_METRICS --brokers redpanda:9092 --partitions $KAFKA_PARTITIONS --replicas 1 \
+          -c retention.ms=$KAFKA_RETENTION_MS -c retention.bytes=$KAFKA_RETENTION_BYTES || true
+        rpk topic create $KAFKA_TOPIC_TRACES --brokers redpanda:9092 --partitions $KAFKA_PARTITIONS --replicas 1 \
+          -c retention.ms=$KAFKA_RETENTION_MS -c retention.bytes=$KAFKA_RETENTION_BYTES || true
     restart: "no"
     networks:
       - otel-net
@@ -83,9 +90,9 @@ services:
       - "4318:4318"
     environment:
       REDPANDA_BROKERS: redpanda:9092
-      KAFKA_TOPIC_LOGS: ${KAFKA_TOPIC_LOGS}
-      KAFKA_TOPIC_METRICS: ${KAFKA_TOPIC_METRICS}
-      KAFKA_TOPIC_TRACES: ${KAFKA_TOPIC_TRACES}
+      KAFKA_TOPIC_LOGS: ${KAFKA_TOPIC_LOGS:-otel-logs}
+      KAFKA_TOPIC_METRICS: ${KAFKA_TOPIC_METRICS:-otel-metrics}
+      KAFKA_TOPIC_TRACES: ${KAFKA_TOPIC_TRACES:-otel-traces}
       OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
     depends_on:
       redpanda-init:
@@ -102,11 +109,11 @@ services:
     build: ./backend-ingester
     environment:
       REDPANDA_BROKERS: redpanda:9092
-      API_BASE_URL: http://backend-api:8080
-      KAFKA_TOPIC_LOGS: ${KAFKA_TOPIC_LOGS}
-      KAFKA_TOPIC_METRICS: ${KAFKA_TOPIC_METRICS}
-      KAFKA_TOPIC_TRACES: ${KAFKA_TOPIC_TRACES}
-      INGESTER_REPLICAS: ${INGESTER_REPLICAS}
+      API_BASE_URL: ${API_BASE_URL:-http://backend-api:8080}
+      KAFKA_TOPIC_LOGS: ${KAFKA_TOPIC_LOGS:-otel-logs}
+      KAFKA_TOPIC_METRICS: ${KAFKA_TOPIC_METRICS:-otel-metrics}
+      KAFKA_TOPIC_TRACES: ${KAFKA_TOPIC_TRACES:-otel-traces}
+      INGESTER_REPLICAS: ${INGESTER_REPLICAS:-1}
       OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
     depends_on:
       redpanda-init:
@@ -121,7 +128,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      CLICKHOUSE_DSN: clickhouse://clickhouse:9000/default
+      CLICKHOUSE_DSN: ${CLICKHOUSE_DSN:-clickhouse://clickhouse:9000/default}
       OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
     depends_on:
       clickhouse:
@@ -139,7 +146,7 @@ services:
     ports:
       - "1337:1337"
     environment:
-      API_BASE_URL: http://backend-api:8080
+      API_BASE_URL: ${API_BASE_URL:-http://backend-api:8080}
     depends_on:
       backend-api:
         condition: service_started
@@ -193,7 +200,7 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards
       - grafana-data:/var/lib/grafana
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
     depends_on:
       prometheus:
