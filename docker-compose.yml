@@ -130,6 +130,7 @@ services:
     environment:
       CLICKHOUSE_DSN: ${CLICKHOUSE_DSN:-clickhouse://clickhouse:9000/default}
       OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
+      PROMETHEUS_URL: ${PROMETHEUS_URL:-http://prometheus:9090}
     depends_on:
       clickhouse:
         condition: service_healthy

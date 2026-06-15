@@ -56,7 +56,7 @@ func InsertLogs(ctx context.Context, conn driver.Conn, rows []LogRow) error {
 }
 
 // QueryLogs returns log rows ordered by timestamp DESC with optional filters.
-func QueryLogs(ctx context.Context, conn driver.Conn, limit, offset int, services []string, logPattern, severity string) ([]LogRow, error) {
+func QueryLogs(ctx context.Context, conn driver.Conn, limit, offset int, services []string, logPattern, severity, resourceAttrKey string) ([]LogRow, error) {
 	query := `SELECT
 		timestamp, observed_timestamp, trace_id, span_id,
 		severity_number, severity_text, body, log_pattern, service_name,
@@ -76,6 +76,10 @@ func QueryLogs(ctx context.Context, conn driver.Conn, limit, offset int, service
 	if severity != "" {
 		clauses = append(clauses, `severity_text = ?`)
 		args = append(args, severity)
+	}
+	if resourceAttrKey != "" {
+		clauses = append(clauses, `mapContains(resource_attributes, ?)`)
+		args = append(args, resourceAttrKey)
 	}
 	if len(clauses) > 0 {
 		query += ` WHERE ` + joinClauses(clauses)
@@ -105,7 +109,7 @@ func QueryLogs(ctx context.Context, conn driver.Conn, limit, offset int, service
 }
 
 // QueryLogPatterns returns distinct (log_pattern, service_name) pairs with counts, optionally filtered by severity.
-func QueryLogPatterns(ctx context.Context, conn driver.Conn, services []string, severity string) ([]LogPatternRow, error) {
+func QueryLogPatterns(ctx context.Context, conn driver.Conn, services []string, severity, resourceAttrKey string) ([]LogPatternRow, error) {
 	query := `SELECT log_pattern, service_name, count() AS cnt FROM otel_logs`
 	args := []interface{}{}
 	clauses := []string{}
@@ -116,6 +120,10 @@ func QueryLogPatterns(ctx context.Context, conn driver.Conn, services []string, 
 	if severity != "" {
 		clauses = append(clauses, `severity_text = ?`)
 		args = append(args, severity)
+	}
+	if resourceAttrKey != "" {
+		clauses = append(clauses, `mapContains(resource_attributes, ?)`)
+		args = append(args, resourceAttrKey)
 	}
 	if len(clauses) > 0 {
 		query += ` WHERE ` + joinClauses(clauses)
@@ -139,13 +147,17 @@ func QueryLogPatterns(ctx context.Context, conn driver.Conn, services []string, 
 	return result, rows.Err()
 }
 
-// QueryLogSeverities returns distinct severity_text values, optionally filtered by services.
-func QueryLogSeverities(ctx context.Context, conn driver.Conn, services []string) ([]string, error) {
+// QueryLogSeverities returns distinct severity_text values, optionally filtered by services or resource attribute key.
+func QueryLogSeverities(ctx context.Context, conn driver.Conn, services []string, resourceAttrKey string) ([]string, error) {
 	query := `SELECT DISTINCT severity_text FROM otel_logs WHERE severity_text != ''`
 	args := []interface{}{}
 	if len(services) > 0 {
 		query += ` AND service_name IN (?)`
 		args = append(args, services)
+	}
+	if resourceAttrKey != "" {
+		query += ` AND mapContains(resource_attributes, ?)`
+		args = append(args, resourceAttrKey)
 	}
 	query += ` ORDER BY severity_text ASC`
 
@@ -166,13 +178,17 @@ func QueryLogSeverities(ctx context.Context, conn driver.Conn, services []string
 	return result, rows.Err()
 }
 
-// QueryLogServices returns distinct service_name values filtered by severity.
-func QueryLogServices(ctx context.Context, conn driver.Conn, severity string) ([]string, error) {
+// QueryLogServices returns distinct service_name values filtered by severity and/or resource attribute key.
+func QueryLogServices(ctx context.Context, conn driver.Conn, severity, resourceAttrKey string) ([]string, error) {
 	query := `SELECT DISTINCT service_name FROM otel_logs WHERE service_name != ''`
 	args := []interface{}{}
 	if severity != "" {
 		query += ` AND severity_text = ?`
 		args = append(args, severity)
+	}
+	if resourceAttrKey != "" {
+		query += ` AND mapContains(resource_attributes, ?)`
+		args = append(args, resourceAttrKey)
 	}
 	query += ` ORDER BY service_name ASC`
 

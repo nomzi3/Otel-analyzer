@@ -33,7 +33,8 @@ func GetLogs(conn driver.Conn) http.HandlerFunc {
 		logPattern := r.URL.Query().Get("log_pattern")
 		severity := r.URL.Query().Get("severity")
 
-		rows, err := db.QueryLogs(r.Context(), conn, limit, offset, services, logPattern, severity)
+		resourceAttrKey := r.URL.Query().Get("resource_attr_key")
+		rows, err := db.QueryLogs(r.Context(), conn, limit, offset, services, logPattern, severity, resourceAttrKey)
 		if err != nil {
 			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -49,7 +50,8 @@ func GetLogPatterns(conn driver.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		services := parseServices(r.URL.Query().Get("services"))
 		severity := r.URL.Query().Get("severity")
-		rows, err := db.QueryLogPatterns(r.Context(), conn, services, severity)
+		resourceAttrKey := r.URL.Query().Get("resource_attr_key")
+		rows, err := db.QueryLogPatterns(r.Context(), conn, services, severity, resourceAttrKey)
 		if err != nil {
 			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -64,7 +66,8 @@ func GetLogPatterns(conn driver.Conn) http.HandlerFunc {
 func GetLogSeverities(conn driver.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		services := parseServices(r.URL.Query().Get("services"))
-		severities, err := db.QueryLogSeverities(r.Context(), conn, services)
+		resourceAttrKey := r.URL.Query().Get("resource_attr_key")
+		severities, err := db.QueryLogSeverities(r.Context(), conn, services, resourceAttrKey)
 		if err != nil {
 			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -79,7 +82,8 @@ func GetLogSeverities(conn driver.Conn) http.HandlerFunc {
 func GetLogServices(conn driver.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		severity := r.URL.Query().Get("severity")
-		services, err := db.QueryLogServices(r.Context(), conn, severity)
+		resourceAttrKey := r.URL.Query().Get("resource_attr_key")
+		services, err := db.QueryLogServices(r.Context(), conn, severity, resourceAttrKey)
 		if err != nil {
 			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 			return

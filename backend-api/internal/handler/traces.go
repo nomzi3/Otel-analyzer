@@ -44,7 +44,8 @@ func GetTraces(conn driver.Conn) http.HandlerFunc {
 		services := parseServices(r.URL.Query().Get("services"))
 		method := r.URL.Query().Get("method")
 
-		rows, err := db.QueryTraces(r.Context(), conn, limit, offset, services, method)
+		resourceAttrKey := r.URL.Query().Get("resource_attr_key")
+		rows, err := db.QueryTraces(r.Context(), conn, limit, offset, services, method, resourceAttrKey)
 		if err != nil {
 			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -58,7 +59,9 @@ func GetTraces(conn driver.Conn) http.HandlerFunc {
 
 func GetTraceMethods(conn driver.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		methods, err := db.QueryTraceMethods(r.Context(), conn)
+		services := parseServices(r.URL.Query().Get("services"))
+		resourceAttrKey := r.URL.Query().Get("resource_attr_key")
+		methods, err := db.QueryTraceMethods(r.Context(), conn, services, resourceAttrKey)
 		if err != nil {
 			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 			return

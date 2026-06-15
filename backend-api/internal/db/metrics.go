@@ -41,7 +41,7 @@ func InsertMetrics(ctx context.Context, conn driver.Conn, rows []MetricRow) erro
 }
 
 // QueryMetrics returns metric rows ordered by timestamp DESC with optional filters.
-func QueryMetrics(ctx context.Context, conn driver.Conn, limit, offset int, metricName string, services []string) ([]MetricRow, error) {
+func QueryMetrics(ctx context.Context, conn driver.Conn, limit, offset int, metricName string, services []string, resourceAttrKey string) ([]MetricRow, error) {
 	query := `SELECT
 		timestamp, metric_name, metric_type, value, service_name,
 		resource_attributes, metric_attributes
@@ -56,6 +56,10 @@ func QueryMetrics(ctx context.Context, conn driver.Conn, limit, offset int, metr
 	if len(services) > 0 {
 		clauses = append(clauses, `service_name IN (?)`)
 		args = append(args, services)
+	}
+	if resourceAttrKey != "" {
+		clauses = append(clauses, `mapContains(resource_attributes, ?)`)
+		args = append(args, resourceAttrKey)
 	}
 	if len(clauses) > 0 {
 		query += ` WHERE ` + joinClauses(clauses)
@@ -89,9 +93,24 @@ func TruncateMetrics(ctx context.Context, conn driver.Conn) error {
 	return conn.Exec(ctx, `TRUNCATE TABLE otel_metrics`)
 }
 
-// QueryMetricNames returns distinct metric names sorted alphabetically.
-func QueryMetricNames(ctx context.Context, conn driver.Conn) ([]string, error) {
-	rows, err := conn.Query(ctx, `SELECT DISTINCT metric_name FROM otel_metrics ORDER BY metric_name ASC`)
+// QueryMetricNames returns distinct metric names sorted alphabetically, optionally filtered.
+func QueryMetricNames(ctx context.Context, conn driver.Conn, services []string, resourceAttrKey string) ([]string, error) {
+	query := `SELECT DISTINCT metric_name FROM otel_metrics`
+	args := []interface{}{}
+	clauses := []string{}
+	if len(services) > 0 {
+		clauses = append(clauses, `service_name IN (?)`)
+		args = append(args, services)
+	}
+	if resourceAttrKey != "" {
+		clauses = append(clauses, `mapContains(resource_attributes, ?)`)
+		args = append(args, resourceAttrKey)
+	}
+	if len(clauses) > 0 {
+		query += ` WHERE ` + joinClauses(clauses)
+	}
+	query += ` ORDER BY metric_name ASC`
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query metric names: %w", err)
 	}

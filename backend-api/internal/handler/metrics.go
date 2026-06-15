@@ -30,7 +30,8 @@ func GetMetrics(conn driver.Conn) http.HandlerFunc {
 		metricName := r.URL.Query().Get("metric_name")
 		services := parseServices(r.URL.Query().Get("services"))
 
-		rows, err := db.QueryMetrics(r.Context(), conn, limit, offset, metricName, services)
+		resourceAttrKey := r.URL.Query().Get("resource_attr_key")
+		rows, err := db.QueryMetrics(r.Context(), conn, limit, offset, metricName, services, resourceAttrKey)
 		if err != nil {
 			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -44,7 +45,9 @@ func GetMetrics(conn driver.Conn) http.HandlerFunc {
 
 func GetMetricNames(conn driver.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		names, err := db.QueryMetricNames(r.Context(), conn)
+		services := parseServices(r.URL.Query().Get("services"))
+		resourceAttrKey := r.URL.Query().Get("resource_attr_key")
+		names, err := db.QueryMetricNames(r.Context(), conn, services, resourceAttrKey)
 		if err != nil {
 			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
 			return
