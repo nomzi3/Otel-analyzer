@@ -81,17 +81,17 @@ services:
     ports:
       - "4317:4317"
       - "4318:4318"
-      - "9090:9090"
     environment:
       REDPANDA_BROKERS: redpanda:9092
       KAFKA_TOPIC_LOGS: ${KAFKA_TOPIC_LOGS}
       KAFKA_TOPIC_METRICS: ${KAFKA_TOPIC_METRICS}
       KAFKA_TOPIC_TRACES: ${KAFKA_TOPIC_TRACES}
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
     depends_on:
       redpanda-init:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9090/metrics"]
+      test: ["CMD", "nc", "-z", "localhost", "4318"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -107,6 +107,7 @@ services:
       KAFKA_TOPIC_METRICS: ${KAFKA_TOPIC_METRICS}
       KAFKA_TOPIC_TRACES: ${KAFKA_TOPIC_TRACES}
       INGESTER_REPLICAS: ${INGESTER_REPLICAS}
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
     depends_on:
       redpanda-init:
         condition: service_completed_successfully
@@ -119,9 +120,9 @@ services:
     build: ./backend-api
     ports:
       - "8080:8080"
-      - "9091:9091"
     environment:
       CLICKHOUSE_DSN: clickhouse://clickhouse:9000/default
+      OTEL_COLLECTOR_ENDPOINT: otel-collector:4317
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -156,6 +157,19 @@ services:
     profiles:
       - tools
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.127.0
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otel-collector-config.yaml
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "4319:4317"
+    depends_on:
+      prometheus:
+        condition: service_started
+    networks:
+      - otel-net
+
   prometheus:
     image: prom/prometheus:v3.3.1
     ports:
@@ -163,6 +177,7 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=1h
+      - --web.enable-remote-write-receiver
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus

@@ -11,6 +11,8 @@ import (
 	collogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	colmetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
@@ -79,7 +81,7 @@ func (h *logsHandler) Export(ctx context.Context, req *collogspb.ExportLogsServi
 			count += len(sl.LogRecords)
 		}
 		if count > 0 {
-			metrics.LogsCounter.WithLabelValues(name).Add(float64(count))
+			metrics.LogsCounter.Add(ctx, int64(count), metric.WithAttributes(attribute.String("service_name", name)))
 		}
 	}
 
@@ -119,7 +121,7 @@ func (h *metricsHandler) Export(ctx context.Context, req *colmetricspb.ExportMet
 			}
 		}
 		if dpCount > 0 {
-			metrics.DatapointsCounter.WithLabelValues(name).Add(float64(dpCount))
+			metrics.DatapointsCounter.Add(ctx, int64(dpCount), metric.WithAttributes(attribute.String("service_name", name)))
 		}
 	}
 
@@ -157,7 +159,7 @@ func (h *tracesHandler) Export(ctx context.Context, req *coltracepb.ExportTraceS
 			spanCount += len(ss.Spans)
 		}
 		if spanCount > 0 {
-			metrics.SpansCounter.WithLabelValues(name).Add(float64(spanCount))
+			metrics.SpansCounter.Add(ctx, int64(spanCount), metric.WithAttributes(attribute.String("service_name", name)))
 		}
 	}
 

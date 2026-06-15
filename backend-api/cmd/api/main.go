@@ -27,7 +27,19 @@ func getEnv(key, fallback string) string {
 func main() {
 	dsn := getEnv("CLICKHOUSE_DSN", "clickhouse://localhost:9000/default")
 	httpPort := getEnv("HTTP_PORT", "8080")
-	metricsPort := getEnv("METRICS_PORT", "9091")
+	collectorEndpoint := getEnv("OTEL_COLLECTOR_ENDPOINT", "localhost:4317")
+
+	ctx := context.Background()
+
+	shutdownMetrics, err := metrics.Init(ctx, collectorEndpoint)
+	if err != nil {
+		log.Fatalf("failed to initialise metrics: %v", err)
+	}
+	defer func() {
+		if err := shutdownMetrics(ctx); err != nil {
+			log.Printf("metrics shutdown error: %v", err)
+		}
+	}()
 
 	conn, err := db.NewConn(dsn)
 	if err != nil {
@@ -35,7 +47,6 @@ func main() {
 	}
 	defer conn.Close()
 
-	// --- API router ---
 	r := chi.NewRouter()
 	r.Use(chimiddleware.Recoverer)
 	r.Use(middleware.REDMetrics)
@@ -73,15 +84,6 @@ func main() {
 		Handler: r,
 	}
 
-	// --- Metrics router ---
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", metrics.Handler())
-	metricsSrv := &http.Server{
-		Addr:    ":" + metricsPort,
-		Handler: mux,
-	}
-
-	// Start both servers in goroutines.
 	go func() {
 		log.Printf("API server listening on :%s", httpPort)
 		if err := apiSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -89,27 +91,16 @@ func main() {
 		}
 	}()
 
-	go func() {
-		log.Printf("Metrics server listening on :%s", metricsPort)
-		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Metrics server error: %v", err)
-		}
-	}()
-
-	// Graceful shutdown.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
 	<-quit
 	log.Println("Shutting down...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if err := apiSrv.Shutdown(ctx); err != nil {
+	if err := apiSrv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("API server shutdown error: %v", err)
-	}
-	if err := metricsSrv.Shutdown(ctx); err != nil {
-		log.Printf("Metrics server shutdown error: %v", err)
 	}
 	log.Println("Shutdown complete.")
 }

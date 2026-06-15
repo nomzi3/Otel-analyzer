@@ -3,17 +3,14 @@ package main
 import (
 	"context"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	"github.com/otel-analyzer/backend-ingester/internal/apiclient"
 	"github.com/otel-analyzer/backend-ingester/internal/consumer"
-	_ "github.com/otel-analyzer/backend-ingester/internal/metrics" // register metrics
+	"github.com/otel-analyzer/backend-ingester/internal/metrics"
 )
 
 func envOr(key, def string) string {
@@ -29,7 +26,20 @@ func main() {
 	logsTopic := envOr("KAFKA_TOPIC_LOGS", "otel-logs")
 	metricsTopic := envOr("KAFKA_TOPIC_METRICS", "otel-metrics")
 	tracesTopic := envOr("KAFKA_TOPIC_TRACES", "otel-traces")
-	metricsPort := envOr("METRICS_PORT", "9093")
+	collectorEndpoint := envOr("OTEL_COLLECTOR_ENDPOINT", "localhost:4317")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	shutdownMetrics, err := metrics.Init(ctx, collectorEndpoint)
+	if err != nil {
+		log.Fatalf("failed to initialise metrics: %v", err)
+	}
+	defer func() {
+		if err := shutdownMetrics(context.Background()); err != nil {
+			log.Printf("metrics shutdown error: %v", err)
+		}
+	}()
 
 	apiClient := apiclient.NewClient(apiBaseURL)
 	proc := consumer.NewProcessor(apiClient, logsTopic, metricsTopic, tracesTopic)
@@ -39,9 +49,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("create consumer: %v", err)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
@@ -53,22 +60,8 @@ func main() {
 		}
 	}()
 
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
-	srv := &http.Server{
-		Addr:    ":" + metricsPort,
-		Handler: mux,
-	}
-	go func() {
-		log.Printf("metrics server listening on :%s", metricsPort)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("metrics server error: %v", err)
-		}
-	}()
-
 	<-sigCh
 	log.Println("shutting down...")
 	cancel()
 	c.Close()
-	srv.Close()
 }

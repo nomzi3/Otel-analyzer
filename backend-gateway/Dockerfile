@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /build
 
@@ -12,6 +12,6 @@ FROM alpine:3.20
 
 COPY --from=builder /gateway /gateway
 
-EXPOSE 4317 4318 9090
+EXPOSE 4317 4318
 
 CMD ["/gateway"]
