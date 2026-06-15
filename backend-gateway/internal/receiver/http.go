@@ -11,6 +11,8 @@ import (
 	plog "go.opentelemetry.io/collector/pdata/plog"
 	pmetric "go.opentelemetry.io/collector/pdata/pmetric"
 	ptrace "go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // HTTPReceiver holds dependencies for the HTTP OTLP receiver.
@@ -87,7 +89,7 @@ func (r *HTTPReceiver) handleLogs(w http.ResponseWriter, req *http.Request) {
 			count += sls.At(j).LogRecords().Len()
 		}
 		if count > 0 {
-			metrics.LogsCounter.WithLabelValues(svcName).Add(float64(count))
+			metrics.LogsCounter.Add(req.Context(), int64(count), metric.WithAttributes(attribute.String("service_name", svcName)))
 		}
 	}
 
@@ -130,7 +132,7 @@ func (r *HTTPReceiver) handleMetrics(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 		if count > 0 {
-			metrics.DatapointsCounter.WithLabelValues(svcName).Add(float64(count))
+			metrics.DatapointsCounter.Add(req.Context(), int64(count), metric.WithAttributes(attribute.String("service_name", svcName)))
 		}
 	}
 
@@ -170,7 +172,7 @@ func (r *HTTPReceiver) handleTraces(w http.ResponseWriter, req *http.Request) {
 			count += sss.At(j).Spans().Len()
 		}
 		if count > 0 {
-			metrics.SpansCounter.WithLabelValues(svcName).Add(float64(count))
+			metrics.SpansCounter.Add(req.Context(), int64(count), metric.WithAttributes(attribute.String("service_name", svcName)))
 		}
 	}
 

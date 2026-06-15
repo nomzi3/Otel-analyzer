@@ -9,6 +9,8 @@ import (
 	"github.com/otel-analyzer/backend-ingester/internal/apiclient"
 	"github.com/otel-analyzer/backend-ingester/internal/metrics"
 	"github.com/otel-analyzer/backend-ingester/internal/processor"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
@@ -46,10 +48,10 @@ func (p *Processor) handle(ctx context.Context, r *kgo.Record) {
 		}
 		if err := p.apiClient.PostLogs(ctx, rows); err != nil {
 			log.Printf("post logs error: %v", err)
-			metrics.IngestFailures.WithLabelValues(r.Topic).Inc()
+			metrics.IngestFailures.Add(ctx, 1, metric.WithAttributes(attribute.String("topic", r.Topic)))
 			return
 		}
-		metrics.LogsProcessed.Add(float64(len(rows)))
+		metrics.LogsProcessed.Add(ctx, int64(len(rows)))
 
 	case p.metricsTopic:
 		var unmarshaler pmetric.ProtoUnmarshaler
@@ -64,10 +66,10 @@ func (p *Processor) handle(ctx context.Context, r *kgo.Record) {
 		}
 		if err := p.apiClient.PostMetrics(ctx, rows); err != nil {
 			log.Printf("post metrics error: %v", err)
-			metrics.IngestFailures.WithLabelValues(r.Topic).Inc()
+			metrics.IngestFailures.Add(ctx, 1, metric.WithAttributes(attribute.String("topic", r.Topic)))
 			return
 		}
-		metrics.DatapointsProcessed.Add(float64(len(rows)))
+		metrics.DatapointsProcessed.Add(ctx, int64(len(rows)))
 
 	case p.tracesTopic:
 		var unmarshaler ptrace.ProtoUnmarshaler
@@ -82,10 +84,10 @@ func (p *Processor) handle(ctx context.Context, r *kgo.Record) {
 		}
 		if err := p.apiClient.PostTraces(ctx, roots, spans); err != nil {
 			log.Printf("post traces error: %v", err)
-			metrics.IngestFailures.WithLabelValues(r.Topic).Inc()
+			metrics.IngestFailures.Add(ctx, 1, metric.WithAttributes(attribute.String("topic", r.Topic)))
 			return
 		}
-		metrics.RootTracesProcessed.Add(float64(len(roots)))
+		metrics.RootTracesProcessed.Add(ctx, int64(len(roots)))
 
 	default:
 		log.Printf("unknown topic: %s", r.Topic)

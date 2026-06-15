@@ -1,12 +1,15 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/otel-analyzer/backend-api/internal/metrics"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // responseWriter wraps http.ResponseWriter to capture the status code.
@@ -24,28 +27,31 @@ func (rw *responseWriter) WriteHeader(code int) {
 func REDMetrics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		method := r.Method
+		ctx := r.Context()
+
+		metrics.RequestsInFlight.Add(ctx, 1,
+			metric.WithAttributes(attribute.String("method", method), attribute.String("path", r.URL.Path)))
 
 		rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-
-		// Resolve the route pattern after routing is complete.
-		// We need to call next first, so we defer the metric recording.
-		method := r.Method
-
-		metrics.RequestsInFlight.WithLabelValues(method, r.URL.Path).Inc()
-		defer func() {
-			// At this point routing has happened, so RouteContext is populated.
-			path := r.URL.Path
-			if rc := chi.RouteContext(r.Context()); rc != nil && rc.RoutePattern() != "" {
-				path = rc.RoutePattern()
-			}
-			status := fmt.Sprintf("%d", rw.statusCode)
-			duration := time.Since(start).Seconds()
-
-			metrics.RequestsInFlight.WithLabelValues(method, path).Dec()
-			metrics.RequestsTotal.WithLabelValues(method, path, status).Inc()
-			metrics.RequestDuration.WithLabelValues(method, path, status).Observe(duration)
-		}()
-
 		next.ServeHTTP(rw, r)
+
+		path := r.URL.Path
+		if rc := chi.RouteContext(r.Context()); rc != nil && rc.RoutePattern() != "" {
+			path = rc.RoutePattern()
+		}
+		status := fmt.Sprintf("%d", rw.statusCode)
+		duration := time.Since(start).Seconds()
+
+		baseAttrs := metric.WithAttributes(attribute.String("method", method), attribute.String("path", path))
+		fullAttrs := metric.WithAttributes(
+			attribute.String("method", method),
+			attribute.String("path", path),
+			attribute.String("status", status),
+		)
+
+		metrics.RequestsInFlight.Add(context.Background(), -1, baseAttrs)
+		metrics.RequestsTotal.Add(ctx, 1, fullAttrs)
+		metrics.RequestDuration.Record(ctx, duration, fullAttrs)
 	})
 }
