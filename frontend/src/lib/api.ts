@@ -110,6 +110,48 @@ export interface ThroughputResponse {
   datapoints_per_sec: number
 }
 
+export interface ServiceRate {
+  service_name: string
+  rate_per_sec: number
+}
+
+export interface ServiceCount {
+  service_name: string
+  count: number
+}
+
+export interface ServiceAvgAttr {
+  service_name: string
+  avg_attr_count: number
+}
+
+export interface LogsStats {
+  total_count: number
+  distinct_services: number
+  top_by_rate: ServiceRate[]
+  top_by_debug_info: ServiceCount[]
+}
+
+export interface MetricsStats {
+  total_count: number
+  distinct_services: number
+  top_by_rate: ServiceRate[]
+  top_by_avg_attr: ServiceAvgAttr[]
+}
+
+export interface TracesStats {
+  total_count: number
+  distinct_services: number
+  top_by_root_spans: ServiceCount[]
+  top_by_rate: ServiceRate[]
+}
+
+export interface StatsResponse {
+  logs: LogsStats
+  metrics: MetricsStats
+  traces: TracesStats
+}
+
 // ---- endpoints ----
 
 export const api = {
@@ -159,4 +201,5 @@ export const api = {
   traceMethods: (p?: { services?: string[]; resource_attr_key?: string }) =>
     get<string[]>('/traces/methods', { services: p?.services, resource_attr_key: p?.resource_attr_key }),
   traceSpans: (traceId: string) => get<SpanRow[]>(`/traces/${traceId}/spans`),
+  stats: () => get<StatsResponse>('/stats'),
 }

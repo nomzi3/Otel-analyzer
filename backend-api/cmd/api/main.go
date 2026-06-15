@@ -54,6 +54,7 @@ func main() {
 
 	r.Get("/health", handler.Health)
 	r.Get("/v1/throughput", handler.GetThroughput(prometheusURL))
+	r.Get("/v1/stats", handler.GetStats(conn, prometheusURL))
 	r.Get("/v1/services", handler.GetServices(conn))
 	r.Get("/v1/resource-attributes", handler.GetResourceAttributeKeys(conn))
 

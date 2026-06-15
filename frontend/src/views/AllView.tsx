@@ -1,172 +1,289 @@
-import { useEffect, useState } from 'react'
-import { api, type LogRow, type MetricRow, type TraceRootRow } from '@/lib/api'
+import { useEffect } from 'react'
 import { useFilters } from '@/store/filters'
-import { formatTimestamp, serviceColor, severityColor, statusColor, statusLabel, getMetricValue } from '@/lib/otel-utils'
+import { useStats } from '@/hooks/use-stats'
+import { serviceColor } from '@/lib/otel-utils'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import type { ServiceRate, ServiceCount, ServiceAvgAttr } from '@/lib/api'
 
-type SignalType = 'log' | 'metric' | 'trace'
-
-interface UnifiedRow {
-  ts: string | number
-  type: SignalType
-  svc: string
-  summary: string
-  badge?: string
-  badgeClass?: string
+function fmtNumber(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'm'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k'
+  return String(n)
 }
 
-function toMs(ts: string | number | undefined): number {
-  if (!ts) return 0
-  const n = Number(ts)
-  if (!isNaN(n)) {
-    if (n > 1e18) return n / 1e6
-    if (n > 1e15) return n / 1e3
-    if (n > 1e12) return n
-    return n * 1000
-  }
-  return new Date(String(ts)).getTime()
-}
-
-function unifyLogs(rows: LogRow[]): UnifiedRow[] {
-  return rows.map(r => ({
-    ts: r.timestamp ?? '',
-    type: 'log',
-    svc: r.service_name ?? r.service ?? '',
-    summary: r.log_pattern ?? r.pattern ?? r.body ?? r.log_body ?? '',
-    badge: r.severity_text ?? 'INFO',
-    badgeClass: severityColor(r.severity_text),
-  }))
-}
-
-function unifyMetrics(rows: MetricRow[]): UnifiedRow[] {
-  return rows.map(r => ({
-    ts: r.timestamp ?? '',
-    type: 'metric',
-    svc: r.service_name ?? r.service ?? '',
-    summary: `${r.metric_name ?? r.name ?? ''} = ${getMetricValue(r as unknown as Record<string, unknown>).toPrecision(4)}`,
-    badge: r.metric_type ?? r.type ?? 'gauge',
-    badgeClass: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
-  }))
-}
-
-function unifyTraces(rows: TraceRootRow[]): UnifiedRow[] {
-  return rows.map(r => ({
-    ts: r.start_time ?? r.start_time_unix_nano ?? r.timestamp ?? '',
-    type: 'trace',
-    svc: r.service_name ?? r.service ?? r.root_service ?? '',
-    summary: `${r.root_name ?? ''} — ${Number(r.duration_ms ?? r.duration ?? 0).toFixed(2)} ms`,
-    badge: statusLabel(r.status ?? r.status_code),
-    badgeClass: statusColor(r.status ?? r.status_code),
-  }))
-}
-
-const PAGE_SIZE = 30
-
-export function AllView({ onRefreshed }: { onRefreshed?: (ts: Date) => void }) {
-  const { filters } = useFilters()
-  const [rows, setRows] = useState<UnifiedRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [page, setPage] = useState(0)
-
-  useEffect(() => {
-    setLoading(true)
-    setError('')
-    setPage(0)
-    const svc = filters.services.length ? filters.services : undefined
-    const rk = filters.resourceAttributes[0] || undefined
-    Promise.all([
-      api.logs({ services: svc, limit: 100, resource_attr_key: rk }).catch(() => [] as LogRow[]),
-      api.metrics({ services: svc, limit: 100, resource_attr_key: rk }).catch(() => [] as MetricRow[]),
-      api.traces({ services: svc, limit: 50, resource_attr_key: rk }).catch(() => [] as TraceRootRow[]),
-    ]).then(([logs, metrics, traces]) => {
-      const logRows = Array.isArray(logs) ? logs : ((logs as Record<string, unknown>).logs ?? []) as LogRow[]
-      const metricRows = Array.isArray(metrics) ? metrics : ((metrics as Record<string, unknown>).metrics ?? []) as MetricRow[]
-      const traceRows = Array.isArray(traces) ? traces : ((traces as Record<string, unknown>).traces ?? []) as TraceRootRow[]
-      const unified = [
-        ...unifyLogs(logRows),
-        ...unifyMetrics(metricRows),
-        ...unifyTraces(traceRows),
-      ].sort((a, b) => toMs(b.ts) - toMs(a.ts))
-      setRows(unified)
-      setLoading(false)
-      onRefreshed?.(new Date())
-    }).catch(e => { setError(String(e)); setLoading(false) })
-  }, [filters.services, filters.resourceAttributes, filters.refreshKey])
-
-  if (loading) return <LoadingRows />
-  if (error) return <p className="p-4 text-destructive">{error}</p>
-
-  const page_rows = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-  const totalPages = Math.ceil(rows.length / PAGE_SIZE)
-
+function MetaCards({ totalLabel, totalCount, distinctServices }: {
+  totalLabel: string
+  totalCount: number
+  distinctServices: number
+}) {
   return (
-    <div className="space-y-3">
-      <p className="px-4 py-2 text-xs text-muted-foreground border-b">
-        {rows.length === 0 ? 'No data found.' : `${rows.length} total signals`}
-      </p>
+    <div className="grid grid-cols-2 gap-3">
+      <Card>
+        <CardHeader className="pb-1 pt-3 px-4">
+          <CardTitle className="text-xs font-medium text-muted-foreground">{totalLabel}</CardTitle>
+        </CardHeader>
+        <CardContent className="pb-3 px-4">
+          <p className="text-2xl font-semibold tabular-nums">{fmtNumber(totalCount)}</p>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="pb-1 pt-3 px-4">
+          <CardTitle className="text-xs font-medium text-muted-foreground">Distinct services</CardTitle>
+        </CardHeader>
+        <CardContent className="pb-3 px-4">
+          <p className="text-2xl font-semibold tabular-nums">{distinctServices}</p>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
 
-      {rows.length > 0 && (
-        <>
+function TopRateTable({ title, rows, valueLabel }: {
+  title: string
+  rows: ServiceRate[] | null
+  valueLabel: string
+}) {
+  const safe = rows ?? []
+  return (
+    <Card>
+      <CardHeader className="pb-1 pt-3 px-4">
+        <CardTitle className="text-xs font-medium text-muted-foreground">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="pb-3 px-4">
+        {safe.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No data</p>
+        ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Timestamp</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Service</TableHead>
-                <TableHead>Summary</TableHead>
+                <TableHead className="h-7 text-xs">Service</TableHead>
+                <TableHead className="h-7 text-xs text-right">{valueLabel}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {page_rows.map((r, i) => (
+              {safe.map((r, i) => (
                 <TableRow key={i}>
-                  <TableCell className="font-mono text-xs whitespace-nowrap">{formatTimestamp(r.ts)}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="capitalize">{r.type}</Badge>
+                  <TableCell className="py-1">
+                    <Badge className={serviceColor(r.service_name)} variant="secondary">
+                      {r.service_name || '—'}
+                    </Badge>
                   </TableCell>
-                  <TableCell><Badge className={serviceColor(r.svc)} variant="secondary">{r.svc || '—'}</Badge></TableCell>
-                  <TableCell className="max-w-sm truncate font-mono text-xs">
-                    {r.badge && <Badge className={`${r.badgeClass} mr-2`} variant="secondary">{r.badge}</Badge>}
-                    {r.summary}
+                  <TableCell className="py-1 text-right font-mono text-xs">
+                    {r.rate_per_sec.toFixed(2)}
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 pb-3 text-sm">
-              <span className="text-muted-foreground text-xs">Page {page + 1} of {totalPages}</span>
-              <div className="flex gap-2">
-                <button
-                  className="px-3 py-1 border rounded text-xs disabled:opacity-40"
-                  disabled={page === 0}
-                  onClick={() => setPage(p => p - 1)}
-                >Prev</button>
-                <button
-                  className="px-3 py-1 border rounded text-xs disabled:opacity-40"
-                  disabled={page >= totalPages - 1}
-                  onClick={() => setPage(p => p + 1)}
-                >Next</button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
+function TopCountTable({ title, rows, valueLabel }: {
+  title: string
+  rows: ServiceCount[] | null
+  valueLabel: string
+}) {
+  const safe = rows ?? []
+  return (
+    <Card>
+      <CardHeader className="pb-1 pt-3 px-4">
+        <CardTitle className="text-xs font-medium text-muted-foreground">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="pb-3 px-4">
+        {safe.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No data</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="h-7 text-xs">Service</TableHead>
+                <TableHead className="h-7 text-xs text-right">{valueLabel}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {safe.map((r, i) => (
+                <TableRow key={i}>
+                  <TableCell className="py-1">
+                    <Badge className={serviceColor(r.service_name)} variant="secondary">
+                      {r.service_name || '—'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="py-1 text-right font-mono text-xs">
+                    {fmtNumber(r.count)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function TopAvgAttrTable({ title, rows }: {
+  title: string
+  rows: ServiceAvgAttr[] | null
+}) {
+  const safe = rows ?? []
+  return (
+    <Card>
+      <CardHeader className="pb-1 pt-3 px-4">
+        <CardTitle className="text-xs font-medium text-muted-foreground">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="pb-3 px-4">
+        {safe.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No data</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="h-7 text-xs">Service</TableHead>
+                <TableHead className="h-7 text-xs text-right">Avg attrs</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {safe.map((r, i) => (
+                <TableRow key={i}>
+                  <TableCell className="py-1">
+                    <Badge className={serviceColor(r.service_name)} variant="secondary">
+                      {r.service_name || '—'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="py-1 text-right font-mono text-xs">
+                    {r.avg_attr_count.toFixed(1)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function Section({ title, loading, children }: {
+  title: string
+  loading: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-semibold tracking-wide uppercase text-muted-foreground border-b pb-1">{title}</h2>
+      {loading ? (
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-3">
+            {[0, 1].map(i => (
+              <Card key={i}>
+                <CardContent className="pt-4 pb-3 px-4 space-y-2">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-7 w-16" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {[0, 1].map(i => (
+              <Card key={i}>
+                <CardContent className="pt-4 pb-3 px-4 space-y-2">
+                  {[0, 1, 2].map(j => <Skeleton key={j} className="h-5 w-full" />)}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      ) : children}
     </div>
   )
 }
 
-function LoadingRows() {
+export function AllView({ onRefreshed }: { onRefreshed?: (ts: Date) => void }) {
+  const { filters } = useFilters()
+  const { data, loading, lastFetched } = useStats(filters.refreshKey)
+
+  useEffect(() => {
+    if (lastFetched) onRefreshed?.(lastFetched)
+  }, [lastFetched])
+
   return (
-    <div className="space-y-2 p-4">
-      {Array.from({ length: 10 }).map((_, i) => (
-        <div key={i} className="flex gap-3">
-          {Array.from({ length: 4 }).map((_, j) => <Skeleton key={j} className="h-5 flex-1" />)}
-        </div>
-      ))}
+    <div className="p-4 space-y-6">
+      <Section title="Logs" loading={loading}>
+        {data && (
+          <>
+            <MetaCards
+              totalLabel="Total logs"
+              totalCount={data.logs.total_count}
+              distinctServices={data.logs.distinct_services}
+            />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <TopRateTable
+                title="Top services by logs/s"
+                rows={data.logs.top_by_rate}
+                valueLabel="logs/s"
+              />
+              <TopCountTable
+                title="Top services by DEBUG+INFO count"
+                rows={data.logs.top_by_debug_info}
+                valueLabel="count"
+              />
+            </div>
+          </>
+        )}
+      </Section>
+
+      <Section title="Metrics" loading={loading}>
+        {data && (
+          <>
+            <MetaCards
+              totalLabel="Total datapoints"
+              totalCount={data.metrics.total_count}
+              distinctServices={data.metrics.distinct_services}
+            />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <TopRateTable
+                title="Top services by datapoints/s"
+                rows={data.metrics.top_by_rate}
+                valueLabel="dp/s"
+              />
+              <TopAvgAttrTable
+                title="Top services by avg attribute count"
+                rows={data.metrics.top_by_avg_attr}
+              />
+            </div>
+          </>
+        )}
+      </Section>
+
+      <Section title="Traces" loading={loading}>
+        {data && (
+          <>
+            <MetaCards
+              totalLabel="Total spans"
+              totalCount={data.traces.total_count}
+              distinctServices={data.traces.distinct_services}
+            />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <TopRateTable
+                title="Top services by spans/s"
+                rows={data.traces.top_by_rate}
+                valueLabel="spans/s"
+              />
+              <TopCountTable
+                title="Top services by root span count"
+                rows={data.traces.top_by_root_spans}
+                valueLabel="root spans"
+              />
+            </div>
+          </>
+        )}
+      </Section>
     </div>
   )
 }
