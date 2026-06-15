@@ -7,6 +7,9 @@ SERVICE ?=
 
 .PHONY: up down build reset scale-ingester test-telemetry logs status help
 
+.env:
+	cp .env.example .env
+
 help:
 	@printf "%-20s %s\n" "up"              "Start all services in the background"
 	@printf "%-20s %s\n" "down"            "Stop and remove all containers"
@@ -17,10 +20,10 @@ help:
 	@printf "%-20s %s\n" "build"           "Force rebuild all images (no cache)"
 	@printf "%-20s %s\n" "status"          "Show container status"
 
-build:
+build: .env
 	docker compose build --no-cache --pull
 
-up:
+up: .env
 	docker compose up -d
 
 down:
