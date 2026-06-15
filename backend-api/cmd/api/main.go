@@ -28,6 +28,7 @@ func main() {
 	dsn := getEnv("CLICKHOUSE_DSN", "clickhouse://localhost:9000/default")
 	httpPort := getEnv("HTTP_PORT", "8080")
 	collectorEndpoint := getEnv("OTEL_COLLECTOR_ENDPOINT", "localhost:4317")
+	prometheusURL := getEnv("PROMETHEUS_URL", "http://localhost:9090")
 
 	ctx := context.Background()
 
@@ -52,6 +53,7 @@ func main() {
 	r.Use(middleware.REDMetrics)
 
 	r.Get("/health", handler.Health)
+	r.Get("/v1/throughput", handler.GetThroughput(prometheusURL))
 	r.Get("/v1/services", handler.GetServices(conn))
 	r.Get("/v1/resource-attributes", handler.GetResourceAttributeKeys(conn))
 
