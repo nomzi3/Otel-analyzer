@@ -2,3 +2,8 @@
 .env
 .env.local
 *.local.json
+
+# Frontend build artifacts and dependencies
+frontend/dist/
+frontend/node_modules/
+frontend/.claude/
