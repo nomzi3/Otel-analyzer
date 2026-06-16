@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useCallback } from 'react'
 export interface FilterState {
   services: string[]
   resourceAttributes: string[]
+  resourceAttrKeyValue: { key: string; value: string } | null
   sortByAttr: string
   logSeverity: string
   logPattern: string
@@ -14,6 +15,7 @@ export interface FilterState {
 const defaultState: FilterState = {
   services: [],
   resourceAttributes: [],
+  resourceAttrKeyValue: null,
   sortByAttr: '',
   logSeverity: '',
   logPattern: '',
@@ -51,6 +53,7 @@ export function useFilterState(): FilterContextValue {
     setFilters(prev => ({
       ...prev,
       resourceAttributes: [],
+      resourceAttrKeyValue: null,
       logSeverity: '',
       logPattern: '',
       metricName: '',

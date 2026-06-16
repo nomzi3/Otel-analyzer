@@ -36,3 +36,23 @@ func GetResourceAttributeKeys(conn driver.Conn) http.HandlerFunc {
 		writeJSON(w, keys)
 	}
 }
+
+func GetResourceAttributeValues(conn driver.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		key := r.URL.Query().Get("key")
+		if key == "" {
+			http.Error(w, "key parameter is required", http.StatusBadRequest)
+			return
+		}
+		services := parseServices(r.URL.Query().Get("services"))
+		values, err := db.QueryResourceAttributeValues(r.Context(), conn, key, services)
+		if err != nil {
+			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if values == nil {
+			values = []string{}
+		}
+		writeJSON(w, values)
+	}
+}

@@ -57,6 +57,7 @@ func main() {
 	r.Get("/v1/stats", handler.GetStats(conn, prometheusURL))
 	r.Get("/v1/services", handler.GetServices(conn))
 	r.Get("/v1/resource-attributes", handler.GetResourceAttributeKeys(conn))
+	r.Get("/v1/resource-attributes/values", handler.GetResourceAttributeValues(conn))
 
 	r.Route("/v1/logs", func(r chi.Router) {
 		r.Post("/", handler.PostLogs(conn))
@@ -72,6 +73,7 @@ func main() {
 		r.Get("/", handler.GetMetrics(conn))
 		r.Delete("/", handler.DeleteMetrics(conn))
 		r.Get("/names", handler.GetMetricNames(conn))
+		r.Get("/services-summary", handler.GetMetricsServicesSummary(conn))
 	})
 
 	r.Route("/v1/traces", func(r chi.Router) {
