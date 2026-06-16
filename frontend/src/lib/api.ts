@@ -125,6 +125,12 @@ export interface ServiceAvgAttr {
   avg_attr_count: number
 }
 
+export interface ServiceMetricSummary {
+  service_name: string
+  datapoints: number
+  metric_name_count: number
+}
+
 export interface LogsStats {
   total_count: number
   distinct_services: number
@@ -202,4 +208,15 @@ export const api = {
     get<string[]>('/traces/methods', { services: p?.services, resource_attr_key: p?.resource_attr_key }),
   traceSpans: (traceId: string) => get<SpanRow[]>(`/traces/${traceId}/spans`),
   stats: () => get<StatsResponse>('/stats'),
+
+  metricsServicesSummary: (p?: { metric_name?: string; resource_attr_key?: string; resource_attr_value?: string; services?: string[] }) =>
+    get<ServiceMetricSummary[]>('/metrics/services-summary', {
+      metric_name: p?.metric_name,
+      resource_attr_key: p?.resource_attr_key,
+      resource_attr_value: p?.resource_attr_value,
+      services: p?.services,
+    }),
+
+  resourceAttributeValues: (p: { key: string; services?: string[] }) =>
+    get<string[]>('/resource-attributes/values', { key: p.key, services: p.services }),
 }

@@ -59,6 +59,24 @@ func GetMetricNames(conn driver.Conn) http.HandlerFunc {
 	}
 }
 
+func GetMetricsServicesSummary(conn driver.Conn) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		metricName := r.URL.Query().Get("metric_name")
+		resourceAttrKey := r.URL.Query().Get("resource_attr_key")
+		resourceAttrValue := r.URL.Query().Get("resource_attr_value")
+		services := parseServices(r.URL.Query().Get("services"))
+		rows, err := db.QueryMetricsServicesSummary(r.Context(), conn, metricName, resourceAttrKey, resourceAttrValue, services)
+		if err != nil {
+			http.Error(w, "query failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if rows == nil {
+			rows = []db.ServiceMetricSummary{}
+		}
+		writeJSON(w, rows)
+	}
+}
+
 func DeleteMetrics(conn driver.Conn) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := db.TruncateMetrics(r.Context(), conn); err != nil {

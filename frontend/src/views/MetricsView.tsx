@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { api, type MetricRow } from '@/lib/api'
+import { api, type MetricRow, type ServiceMetricSummary } from '@/lib/api'
 import { useFilters } from '@/store/filters'
 import { formatTimestamp, serviceColor, getMetricValue, stableJson } from '@/lib/otel-utils'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ArrowUpDownIcon } from 'lucide-react'
 
 interface MetricGroup {
   name: string
@@ -32,15 +33,121 @@ function groupMetrics(rows: MetricRow[]): MetricGroup[] {
   return [...map.values()]
 }
 
-export function MetricsView({ onRefreshed }: { onRefreshed?: (ts: Date) => void }) {
+// ── Landing page ─────────────────────────────────────────────────────────────
+
+type SortKey = 'datapoints' | 'metric_name_count'
+
+function MetricsLandingPage({ onSelectService }: { onSelectService: (svc: string) => void }) {
   const { filters } = useFilters()
+  const [rows, setRows] = useState<ServiceMetricSummary[]>([])
+  const [loading, setLoading] = useState(true)
+  const [sortKey, setSortKey] = useState<SortKey>('datapoints')
+
+  useEffect(() => {
+    setLoading(true)
+    const kv = filters.resourceAttrKeyValue
+    api.metricsServicesSummary({
+      metric_name: filters.metricName || undefined,
+      resource_attr_key: filters.resourceAttributes[0] || undefined,
+      resource_attr_value: kv ? kv.value : undefined,
+      services: filters.services.length ? filters.services : undefined,
+    }).then(data => {
+      setRows(data)
+      setLoading(false)
+    }).catch(() => setLoading(false))
+  }, [
+    filters.metricName,
+    filters.resourceAttributes,
+    filters.resourceAttrKeyValue,
+    filters.services,
+    filters.refreshKey,
+  ])
+
+  const sorted = [...rows].sort((a, b) =>
+    sortKey === 'datapoints'
+      ? b.datapoints - a.datapoints
+      : b.metric_name_count - a.metric_name_count
+  )
+
+  function SortButton({ sk, label }: { sk: SortKey; label: string }) {
+    return (
+      <button
+        type="button"
+        onClick={() => setSortKey(sk)}
+        className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors ${
+          sortKey === sk
+            ? 'bg-accent font-medium text-foreground'
+            : 'text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        <ArrowUpDownIcon className="h-3 w-3" />
+        {label}
+      </button>
+    )
+  }
+
+  if (loading) return <LoadingRows cols={3} />
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 border-b px-4 py-2">
+        <span className="text-xs text-muted-foreground">Sort by</span>
+        <SortButton sk="datapoints" label="Datapoints" />
+        <SortButton sk="metric_name_count" label="Metric names" />
+        {sorted.length > 0 && (
+          <span className="ml-auto text-xs text-muted-foreground">
+            {sorted.length} service{sorted.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+      {sorted.length === 0 ? (
+        <p className="px-4 py-6 text-xs text-muted-foreground">No metric data found.</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Service Name</TableHead>
+              <TableHead className="text-right">Datapoints</TableHead>
+              <TableHead className="text-right">Metric Names</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sorted.map(r => (
+              <TableRow
+                key={r.service_name}
+                className="cursor-pointer"
+                onClick={() => onSelectService(r.service_name)}
+              >
+                <TableCell>
+                  <Badge className={serviceColor(r.service_name)} variant="secondary">
+                    {r.service_name || '—'}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{r.datapoints.toLocaleString()}</TableCell>
+                <TableCell className="text-right tabular-nums">{r.metric_name_count.toLocaleString()}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  )
+}
+
+// ── Metric series table ───────────────────────────────────────────────────────
+
+export function MetricsView({ onRefreshed }: { onRefreshed?: (ts: Date) => void }) {
+  const { filters, setFilter } = useFilters()
   const [groups, setGroups] = useState<MetricGroup[]>([])
   const [totalRows, setTotalRows] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<MetricGroup | null>(null)
 
+  const showLanding = filters.services.length === 0
+
   useEffect(() => {
+    if (showLanding) return
     setLoading(true)
     setError('')
     api.metrics({
@@ -54,7 +161,15 @@ export function MetricsView({ onRefreshed }: { onRefreshed?: (ts: Date) => void 
       setLoading(false)
       onRefreshed?.(new Date())
     }).catch(e => { setError(String(e)); setLoading(false) })
-  }, [filters.services, filters.metricName, filters.resourceAttributes, filters.refreshKey])
+  }, [filters.services, filters.metricName, filters.resourceAttributes, filters.refreshKey, showLanding])
+
+  if (showLanding) {
+    return (
+      <MetricsLandingPage
+        onSelectService={svc => setFilter('services', [svc])}
+      />
+    )
+  }
 
   if (loading) return <LoadingRows cols={5} />
   if (error) return <p className="p-4 text-destructive">{error}</p>

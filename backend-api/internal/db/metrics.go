@@ -93,6 +93,54 @@ func TruncateMetrics(ctx context.Context, conn driver.Conn) error {
 	return conn.Exec(ctx, `TRUNCATE TABLE otel_metrics`)
 }
 
+// ServiceMetricSummary holds per-service aggregate counts from otel_metrics.
+type ServiceMetricSummary struct {
+	ServiceName     string `json:"service_name"`
+	Datapoints      uint64 `json:"datapoints"`
+	MetricNameCount uint64 `json:"metric_name_count"`
+}
+
+// QueryMetricsServicesSummary returns per-service datapoint and metric-name counts, optionally filtered.
+func QueryMetricsServicesSummary(ctx context.Context, conn driver.Conn, metricName, resourceAttrKey, resourceAttrValue string, services []string) ([]ServiceMetricSummary, error) {
+	query := `SELECT service_name, count() AS datapoints, count(DISTINCT metric_name) AS metric_name_count
+	FROM otel_metrics
+	WHERE service_name != ''`
+
+	args := []interface{}{}
+	if metricName != "" {
+		query += ` AND metric_name = ?`
+		args = append(args, metricName)
+	}
+	if len(services) > 0 {
+		query += ` AND service_name IN (?)`
+		args = append(args, services)
+	}
+	if resourceAttrKey != "" && resourceAttrValue != "" {
+		query += ` AND resource_attributes[?] = ?`
+		args = append(args, resourceAttrKey, resourceAttrValue)
+	} else if resourceAttrKey != "" {
+		query += ` AND mapContains(resource_attributes, ?)`
+		args = append(args, resourceAttrKey)
+	}
+	query += ` GROUP BY service_name ORDER BY datapoints DESC`
+
+	rows, err := conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query metrics services summary: %w", err)
+	}
+	defer rows.Close()
+
+	var result []ServiceMetricSummary
+	for rows.Next() {
+		var r ServiceMetricSummary
+		if err := rows.Scan(&r.ServiceName, &r.Datapoints, &r.MetricNameCount); err != nil {
+			return nil, fmt.Errorf("scan row: %w", err)
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
 // QueryMetricNames returns distinct metric names sorted alphabetically, optionally filtered.
 func QueryMetricNames(ctx context.Context, conn driver.Conn, services []string, resourceAttrKey string) ([]string, error) {
 	query := `SELECT DISTINCT metric_name FROM otel_metrics`

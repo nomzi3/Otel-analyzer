@@ -202,6 +202,50 @@ func TruncateTraces(ctx context.Context, conn driver.Conn) error {
 	return conn.Exec(ctx, `TRUNCATE TABLE otel_spans`)
 }
 
+// QueryResourceAttributeValues returns distinct values for a given resource attribute key across all signal tables.
+func QueryResourceAttributeValues(ctx context.Context, conn driver.Conn, key string, services []string) ([]string, error) {
+	if key == "" {
+		return []string{}, nil
+	}
+	var query string
+	var args []interface{}
+	if len(services) > 0 {
+		query = `SELECT DISTINCT val FROM (
+			SELECT resource_attributes[?] AS val FROM otel_logs WHERE mapContains(resource_attributes, ?) AND val != '' AND service_name IN (?)
+			UNION ALL
+			SELECT resource_attributes[?] AS val FROM otel_metrics WHERE mapContains(resource_attributes, ?) AND val != '' AND service_name IN (?)
+			UNION ALL
+			SELECT resource_attributes[?] AS val FROM otel_trace_roots WHERE mapContains(resource_attributes, ?) AND val != '' AND service_name IN (?)
+		) ORDER BY val ASC`
+		args = []interface{}{key, key, services, key, key, services, key, key, services}
+	} else {
+		query = `SELECT DISTINCT val FROM (
+			SELECT resource_attributes[?] AS val FROM otel_logs WHERE mapContains(resource_attributes, ?) AND val != ''
+			UNION ALL
+			SELECT resource_attributes[?] AS val FROM otel_metrics WHERE mapContains(resource_attributes, ?) AND val != ''
+			UNION ALL
+			SELECT resource_attributes[?] AS val FROM otel_trace_roots WHERE mapContains(resource_attributes, ?) AND val != ''
+		) ORDER BY val ASC`
+		args = []interface{}{key, key, key, key, key, key}
+	}
+
+	rows, err := conn.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query resource attribute values: %w", err)
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var val string
+		if err := rows.Scan(&val); err != nil {
+			return nil, fmt.Errorf("scan row: %w", err)
+		}
+		result = append(result, val)
+	}
+	return result, rows.Err()
+}
+
 // QueryServices returns distinct service names across all three signal tables, optionally filtered by resource attribute key.
 func QueryServices(ctx context.Context, conn driver.Conn, resourceAttrKey string) ([]string, error) {
 	var query string
