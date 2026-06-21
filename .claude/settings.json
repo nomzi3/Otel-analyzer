@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'WORKFLOW ENFORCEMENT: Any change to this repo (feature, fix, refactor, docs) must be initiated by invoking the orchestrator agent via the Agent tool. Do not edit files directly, skip the planner, or skip the reviewer pre-code tests. If a file change is needed and no orchestrator run is active, spawn the orchestrator instead.'"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Agent(subagent_type: planner)",
+      "Agent(subagent_type: coder)",
+      "Agent(subagent_type: reviewer)"
+    ]
+  }
+}
